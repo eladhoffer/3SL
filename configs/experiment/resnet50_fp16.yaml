@@ -1,0 +1,61 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=resnet50_imagenet.yaml
+
+defaults:
+  - override /trainer: minimal.yaml # choose trainer from 'configs/trainer/'
+  - override /task: resnet.yaml
+  - override /data: imagenet.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+batch_size: 128
+resume: null
+
+trainer:
+  min_epochs: 1
+  max_epochs: 90
+  gpus: 8
+  accelerator: ddp
+  precision: 16
+  benchmark: true
+  plugins:
+    _target_: pytorch_lightning.plugins.DDPPlugin
+    find_unused_parameters: False
+
+data:
+  train:
+    loader:
+      batch_size: 128
+      num_workers: 2
+  val:
+    loader:
+      batch_size: 512
+      num_workers: 2
+     
+task:
+  _target_: src.tasks.supervised.ClassificationTask
+  model:
+    _target_: src.models.resnet.resnet
+    dataset: "imagenet"
+    depth: 50
+  regime:
+    - epoch: 0
+      optimizer: SGD
+      lr: 0.4
+      momentum: 0.9
+      regularizer:
+        name: 'WeightDecay'
+        value: 1e-4
+        log: true
+    - epoch: 30
+      lr: 0.04
+    - epoch: 60
+      lr: 0.004
+    - epoch: 80
+      lr: 0.0004
