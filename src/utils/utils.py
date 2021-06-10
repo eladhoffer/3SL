@@ -1,7 +1,7 @@
 import logging
 import warnings
 from typing import List, Sequence
-
+import torch.nn as nn
 import pytorch_lightning as pl
 import rich.syntax
 import rich.tree
@@ -59,19 +59,19 @@ def extras(config: DictConfig) -> None:
         # Debuggers don't like GPUs or multiprocessing
         if config.trainer.get("gpus"):
             config.trainer.gpus = 0
-        if config.datamodule.get("pin_memory"):
-            config.datamodule.pin_memory = False
-        if config.datamodule.get("num_workers"):
-            config.datamodule.num_workers = 0
+        if config.data.get("pin_memory"):
+            config.data.pin_memory = False
+        if config.data.get("num_workers"):
+            config.data.num_workers = 0
 
     # force multi-gpu friendly configuration if <config.trainer.accelerator=ddp>
     accelerator = config.trainer.get("accelerator")
     if accelerator in ["ddp", "ddp_spawn", "dp", "ddp2"]:
         log.info(f"Forcing ddp friendly configuration! <config.trainer.accelerator={accelerator}>")
-        if config.datamodule.get("num_workers"):
-            config.datamodule.num_workers = 0
-        if config.datamodule.get("pin_memory"):
-            config.datamodule.pin_memory = False
+        if config.data.get("num_workers"):
+            config.data.num_workers = 0
+        if config.data.get("pin_memory"):
+            config.data.pin_memory = False
 
     # disable adding new keys to config
     OmegaConf.set_struct(config, True)
@@ -83,7 +83,7 @@ def print_config(
     fields: Sequence[str] = (
         "trainer",
         "model",
-        "datamodule",
+        "data",
         "callbacks",
         "logger",
         "seed",
@@ -122,8 +122,8 @@ def empty(*args, **kwargs):
 @rank_zero_only
 def log_hyperparameters(
     config: DictConfig,
-    model: pl.LightningModule,
-    datamodule: pl.LightningDataModule,
+    task: pl.LightningModule,
+    data: pl.LightningDataModule,
     trainer: pl.Trainer,
     callbacks: List[pl.Callback],
     logger: List[pl.loggers.LightningLoggerBase],
@@ -138,18 +138,18 @@ def log_hyperparameters(
 
     # choose which parts of hydra config will be saved to loggers
     hparams["trainer"] = config["trainer"]
-    hparams["model"] = config["model"]
-    hparams["datamodule"] = config["datamodule"]
+    hparams["task"] = config["task"]
+    hparams["data"] = config["data"]
     if "callbacks" in config:
         hparams["callbacks"] = config["callbacks"]
 
     # save number of model parameters
-    hparams["model/params_total"] = sum(p.numel() for p in model.parameters())
-    hparams["model/params_trainable"] = sum(
-        p.numel() for p in model.parameters() if p.requires_grad
+    hparams["task/params_total"] = sum(p.numel() for p in task.parameters())
+    hparams["task/params_trainable"] = sum(
+        p.numel() for p in task.parameters() if p.requires_grad
     )
-    hparams["model/params_not_trainable"] = sum(
-        p.numel() for p in model.parameters() if not p.requires_grad
+    hparams["task/params_not_trainable"] = sum(
+        p.numel() for p in task.parameters() if not p.requires_grad
     )
 
     # send hparams to all loggers
@@ -163,8 +163,8 @@ def log_hyperparameters(
 
 def finish(
     config: DictConfig,
-    model: pl.LightningModule,
-    datamodule: pl.LightningDataModule,
+    task: pl.LightningModule,
+    data: pl.LightningDataModule,
     trainer: pl.Trainer,
     callbacks: List[pl.Callback],
     logger: List[pl.loggers.LightningLoggerBase],

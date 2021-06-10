@@ -3,10 +3,10 @@
 # specify here default training configuration
 defaults:
   - trainer: minimal.yaml
-  - model: mnist_model.yaml
-  - datamodule: mnist_datamodule.yaml
+  - task: resnet_cifar.yaml
+  - data: cifar10.yaml
   - callbacks: default.yaml # set this to null if you don't want to use callbacks
-  - logger: null # set logger here or use command line (e.g. `python run.py logger=wandb`)
+  - logger: many_loggers.yaml  # set logger here or use command line (e.g. `python run.py logger=wandb`)
 
   - experiment: null
   - hparams_search: null
@@ -17,6 +17,9 @@ defaults:
   - override hydra/hydra_logging: colorlog
   - override hydra/job_logging: colorlog
 
+# experiment name identifier
+name: ${now:%Y-%m-%d}/${now:%H-%M-%S}
+
 # path to original working directory
 # hydra hijacks working directory by changing it to the current log directory,
 # so it's useful to have this path as a special variable
@@ -24,7 +27,7 @@ defaults:
 work_dir: ${hydra:runtime.cwd}
 
 # path to folder with data
-data_dir: ${work_dir}/data/
+data_dir: ~/Datasets
 
 # use `python run.py debug=true` for easy debugging!
 # this will run 1 train, val and test loop with only 1 batch
@@ -37,3 +40,10 @@ print_config: True
 
 # disable python warnings if they annoy you
 ignore_warnings: True
+
+# global aliases for easy configuration
+batch_size: 64
+eval_batch_size: ${batch_size}
+loader_num_workers: 8
+loader_pin_memory: true
+resume: null

@@ -1,8 +1,8 @@
 # output paths for hydra logs
 run:
-  dir: logs/runs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  dir: results/${name}
 sweep:
-  dir: logs/multiruns/${now:%Y-%m-%d_%H-%M-%S}
+  dir: results/multiruns/${name}
   subdir: ${hydra.job.num}
 
 # you can set here environment variables that are universal for all users

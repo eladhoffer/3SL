@@ -1,5 +1,6 @@
 from typing import List, Optional
-
+from pytorch_lightning.core.saving import convert
+import torch.nn as nn
 import hydra
 from omegaconf import DictConfig
 from pytorch_lightning import (
@@ -32,12 +33,12 @@ def train(config: DictConfig) -> Optional[float]:
         seed_everything(config.seed, workers=True)
 
     # Init Lightning datamodule
-    log.info(f"Instantiating datamodule <{config.datamodule._target_}>")
-    datamodule: LightningDataModule = hydra.utils.instantiate(config.datamodule)
+    log.info(f"Instantiating data <{config.data._target_}>")
+    data: LightningDataModule = hydra.utils.instantiate(config.data)
 
     # Init Lightning model
-    log.info(f"Instantiating model <{config.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(config.model)
+    log.info(f"Instantiating task <{config.task._target_}>")
+    task: LightningModule = hydra.utils.instantiate(config.task,  _convert_="all")
 
     # Init Lightning callbacks
     callbacks: List[Callback] = []
@@ -65,8 +66,8 @@ def train(config: DictConfig) -> Optional[float]:
     log.info("Logging hyperparameters!")
     utils.log_hyperparameters(
         config=config,
-        model=model,
-        datamodule=datamodule,
+        task=task,
+        data=data,
         trainer=trainer,
         callbacks=callbacks,
         logger=logger,
@@ -74,7 +75,7 @@ def train(config: DictConfig) -> Optional[float]:
 
     # Train the model
     log.info("Starting training!")
-    trainer.fit(model=model, datamodule=datamodule)
+    trainer.fit(task, datamodule=data)
 
     # Evaluate model on test set after training
     if not config.trainer.get("fast_dev_run"):
@@ -85,8 +86,8 @@ def train(config: DictConfig) -> Optional[float]:
     log.info("Finalizing!")
     utils.finish(
         config=config,
-        model=model,
-        datamodule=datamodule,
+        task=task,
+        data=data,
         trainer=trainer,
         callbacks=callbacks,
         logger=logger,
