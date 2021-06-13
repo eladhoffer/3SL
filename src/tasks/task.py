@@ -23,9 +23,19 @@ class Task(pl.LightningModule):
         self.optim_regime = OptimRegime(self.model, self.regime)
         return self.optim_regime.optimizer
 
-    def update_regime(self):
+    def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
         self.optim_regime.update(self.current_epoch, self.global_step + 1)
         self.optim_regime.pre_forward()
+        self.optim_regime.pre_backward()
+        return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
+
+    def on_after_backward(self) -> None:
+        self.optim_regime.pre_step()
+        return super().on_after_backward()
+
+    def on_before_zero_grad(self, optimizer) -> None:
+        self.optim_regime.post_step()
+        return super().on_before_zero_grad(optimizer)
 
     def training_step_end(self, losses):
         self.update_ema()

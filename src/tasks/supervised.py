@@ -8,7 +8,6 @@ class ClassificationTask(Task):
         super().__init__(model, regime, **kwargs)
 
     def training_step(self, batch, batch_idx):
-        self.update_regime()
         x, y = batch
         if isinstance(x, list):  # drop unlabled
             x, y = x
