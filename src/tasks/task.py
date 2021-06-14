@@ -10,14 +10,13 @@ class Task(pl.LightningModule):
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
                  **kwargs):
         super().__init__(**kwargs)
-        self.save_hyperparameters()
         self.model = model
         self.regime = regime
         self.ema_momentum = ema_momentum
         self.ema_bn_momentum = ema_bn_momentum or ema_momentum
-
         if use_ema and ema_momentum > 0:
             self.create_ema(device=ema_device)
+        self.save_hyperparameters()
 
     def configure_optimizers(self):
         self.optim_regime = OptimRegime(self.model, self.regime)

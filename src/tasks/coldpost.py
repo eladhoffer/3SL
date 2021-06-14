@@ -2,8 +2,8 @@ from .mixmatch import interleave, MixUp, MixMatchTask
 from pytorch_lightning.metrics import functional as FM
 import torch
 import torch.nn.functional as F
-from utils.cross_entropy import cross_entropy
-from utils.misc import no_bn_update
+from src.utils_pt.cross_entropy import cross_entropy
+from src.utils_pt.misc import no_bn_update
 
 
 class ColdPostTask(MixMatchTask):

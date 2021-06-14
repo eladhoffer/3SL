@@ -1,16 +1,15 @@
-from lightly.transforms import gaussian_blur
 from .task import pack_inputs, unpack_outputs, MixUp
 from .supervised import ClassificationTask
 from pytorch_lightning.metrics import functional as FM
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils.cross_entropy import cross_entropy
+from src.utils_pt.cross_entropy import cross_entropy
 import lightly
 from lightly.utils.benchmarking import knn_predict
 from itertools import combinations
 import torch.distributed as dist
-from data.augment import DiffSimCLRAugment, _imagenet_stats
+from src.data.transforms import DiffSimCLRAugment, _imagenet_stats
 import torchvision
 
 
@@ -139,7 +138,7 @@ class SimSiamTask(UnSupTask):
         elif 'image' in class_embedding:
             augment = None
             if 'augmented_image' in class_embedding:
-                augment = DiffSimCLRAugment(input_size=32, gaussian_blur=0.)
+                augment = DiffSimCLRAugment(input_size=32, =0.)
             embedding = DiffImage(num_classes, image_size=32,
                                   num_images=num_image_aug, augment=augment)
         else:

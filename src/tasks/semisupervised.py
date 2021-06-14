@@ -1,12 +1,10 @@
-from .task import pack_inputs, unpack_outputs, MixUp
 from .supervised import ClassificationTask
 from pytorch_lightning.metrics import functional as FM
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils.cross_entropy import cross_entropy
-
-from utils.mixup import MixUp as _MixUp
+from src.utils_pt.cross_entropy import cross_entropy
+from src.utils_pt.mixup import MixUp as _MixUp
 
 
 class MixUp(_MixUp):
