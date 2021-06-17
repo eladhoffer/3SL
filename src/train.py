@@ -40,6 +40,11 @@ def train(config: DictConfig) -> Optional[float]:
     log.info(f"Instantiating task <{config.task._target_}>")
     task: LightningModule = hydra.utils.instantiate(config.task, _convert_="all")
 
+    checkpoint = config.get("checkpoint")
+    if checkpoint:
+        task = task.load_from_checkpoint(checkpoint)
+        log.info(f"Loaded checkpoint {checkpoint}")
+
     # Init Lightning callbacks
     callbacks: List[Callback] = []
     if "callbacks" in config:
@@ -73,14 +78,18 @@ def train(config: DictConfig) -> Optional[float]:
         logger=logger,
     )
 
-    # Train the model
-    log.info("Starting training!")
-    trainer.fit(task, datamodule=data)
+    # Evaluate model checkpoint
+    if config.get("evaluate"):
+        log.info("Validating pretrained model")
+        trainer.validate(task, datamodule=data)
+    else:  # Train the model
+        log.info("Starting training!")
+        trainer.fit(task, datamodule=data)
 
-    # Evaluate model on test set after training
-    if not config.trainer.get("fast_dev_run"):
-        log.info("Starting testing!")
-        trainer.test()
+        # Evaluate model on test set after training
+        if not config.trainer.get("fast_dev_run"):
+            log.info("Starting testing!")
+            trainer.test()
 
     # Make sure everything closed properly
     log.info("Finalizing!")

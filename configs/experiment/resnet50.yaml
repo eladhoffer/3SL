@@ -14,14 +14,28 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-batch_size: 64
+batch_size: 128
 resume: null
 
 trainer:
   min_epochs: 1
   max_epochs: 90
-  gpus: 4
-  accelerator: "ddp"
+  gpus: 8
+  accelerator: ddp
+  benchmark: true
+  plugins:
+    _target_: pytorch_lightning.plugins.DDPPlugin
+    find_unused_parameters: False
+
+data:
+  train:
+    loader:
+      batch_size: 64
+      num_workers: 2
+  val:
+    loader:
+      batch_size: 256
+      num_workers: 2
 
 task:
   _target_: src.tasks.supervised.ClassificationTask
@@ -29,3 +43,17 @@ task:
     _target_: src.models.resnet.resnet
     dataset: "imagenet"
     depth: 50
+  regime:
+    - epoch: 0
+      optimizer: SGD
+      lr: 0.2
+      momentum: 0.9
+      regularizer:
+        name: 'WeightDecay'
+        value: 1e-4
+    - epoch: 30
+      lr: 0.02
+    - epoch: 60
+      lr: 0.002
+    - epoch: 80
+      lr: 0.0002

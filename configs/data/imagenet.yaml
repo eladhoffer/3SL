@@ -34,9 +34,9 @@ val:
   transform:
     _target_: src.data.transforms.Compose
     transforms:
-      - _target_: src.data.transforms.CenterCrop
-        size: 256
       - _target_: src.data.transforms.Resize
+        size: 256
+      - _target_: src.data.transforms.CenterCrop
         size: 224        
       - _target_: src.data.transforms.ToTensor
       - ${data.train.normalize}
