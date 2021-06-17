@@ -1,0 +1,5 @@
+calibrate_bn:
+  _target_: src.callbacks.CalibrateModel
+  datamodule: ${data}
+  split: 'train'
+  num_steps: 100

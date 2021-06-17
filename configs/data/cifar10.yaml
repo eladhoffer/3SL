@@ -1,6 +1,4 @@
 _target_: src.data.DataModule
-num_workers: 8
-pin_memory: true
 normalize:
   _target_: src.data.transforms.Normalize
   mean: [0.485, 0.456, 0.406]
@@ -23,6 +21,8 @@ train:
     batch_size: ${batch_size}
     shuffle: true
     drop_last: true
+    num_workers: 8
+    pin_memory: true    
 val:
   dataset:
     name: cifar10
@@ -39,4 +39,6 @@ val:
     batch_size: ${eval_batch_size}
     shuffle: false
     drop_last: false
+    num_workers: 8
+    pin_memory: true    
 

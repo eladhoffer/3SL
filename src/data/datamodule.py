@@ -75,22 +75,6 @@ def get_dataset(name='cifar10', split='train', transform=None,
     }
 
 
-def _update(x, default={}, override={}):
-    if isinstance(x, dict):
-        for key, value in default.items():
-            if key not in x.keys():
-                x[key] = value
-            elif isinstance(value, dict):
-                _update(x[key], value)
-        for key, value in override.items():
-            if isinstance(value, dict):
-                x.setdefault(key, {})
-                _update(x[key], override=value)
-            else:
-                x[key] = value
-    return x
-
-
 class DataModule(LightningDataModule):
     """
     A DataModule implements 5 key methods:
@@ -109,22 +93,14 @@ class DataModule(LightningDataModule):
         val=None,
         test=None,
         benchmark=None,
-        num_workers=None,  # override for ddp usage
-        pin_memory=None,  # override for ddp usage,
         **kwargs
     ):
         super().__init__()
-        defaults = {}
-        override = {'loader': {}}
-        if num_workers is not None:
-            override['loader']['num_workers'] = num_workers
-        if pin_memory is not None:
-            override['loader']['pin_memory'] = pin_memory
         self.configs = {
-            'train': _update(train, defaults, override),
-            'val': _update(val, defaults, override),
-            'test': _update(test, defaults, override),
-            'benchmark': _update(benchmark, defaults, override)
+            'train': train,
+            'val': val,
+            'test': test,
+            'benchmark': benchmark
         }
         self.datasets = {}
 
