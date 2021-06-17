@@ -1,0 +1,19 @@
+_target_: src.tasks.semisupervised.FixMatchTask
+model:
+  _target_: src.models.resnet.wide_resnet
+  dataset: cifar10
+  depth: 28
+  width: 2
+regime:
+  - epoch: 0
+    optimizer: SGD
+    lr: 0.03
+    lr_scheduler:
+      name: CosineAnnealingLR
+      time_frame: step
+      T_max: ${trainer.max_steps}
+      eta_min: 0
+    momentum: 0.9
+    regularizer: 
+      name: WeightDecay
+      value: 5e-4

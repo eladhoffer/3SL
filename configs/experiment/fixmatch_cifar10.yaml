@@ -1,0 +1,23 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=fixmatch_cifar10
+defaults:
+  - override /trainer: minimal.yaml # choose trainer from 'configs/trainer/'
+  - override /task: fixmatch_cifar.yaml
+  - override /data: cifar10_semisupervised.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+batch_size: 64
+resume: null
+
+trainer:
+  min_epochs: 1
+  max_steps: 100000
+  max_epochs: ${trainer.max_steps}
+  benchmark: true

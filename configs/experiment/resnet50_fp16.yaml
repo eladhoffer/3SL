@@ -32,11 +32,9 @@ data:
   train:
     loader:
       batch_size: 128
-      num_workers: 2
   val:
     loader:
       batch_size: 512
-      num_workers: 2
 
 task:
   _target_: src.tasks.supervised.ClassificationTask

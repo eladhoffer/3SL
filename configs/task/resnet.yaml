@@ -1,7 +1,7 @@
 _target_: src.tasks.supervised.ClassificationTask
 model:
   _target_: src.models.resnet.resnet
-  dataset: ${data.train.name}
+  dataset: imagenet
 regime:
   - epoch: 0
     optimizer: SGD
