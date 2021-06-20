@@ -1,0 +1,86 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=resnet50_imagenet.yaml
+
+defaults:
+  - override /trainer: minimal.yaml # choose trainer from 'configs/trainer/'
+  - override /task: nfnet.yaml
+  - override /data: imagenet.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+batch_size: 64
+resume: null
+
+trainer:
+  min_epochs: 1
+  max_epochs: 90
+  gpus: 8
+  accelerator: ddp
+  precision: 16
+  benchmark: true
+  plugins:
+    _target_: pytorch_lightning.plugins.DDPPlugin
+    find_unused_parameters: False
+
+data:
+  train:
+    dataset:
+      name: imagenet
+      split: train
+      path: ${data_dir}
+      transform:
+        _target_: src.data.transforms.Compose
+        transforms:
+          - _target_: src.data.transforms.RandomResizedCrop
+            size: 192
+          - _target_: src.data.transforms.RandomHorizontalFlip
+          - _target_: src.data.transforms.ToTensor
+          - ${data.normalize}
+    loader:
+      batch_size: 64
+      shuffle: true
+      drop_last: true
+      num_workers: 2
+      pin_memory: false    
+  val:
+    dataset:
+      transform:
+        _target_: src.data.transforms.Compose
+        transforms:
+          - _target_: src.data.transforms.Resize
+            size: 256
+          - _target_: src.data.transforms.CenterCrop
+            size: 256        
+          - _target_: src.data.transforms.ToTensor
+          - ${data.normalize}
+    loader:
+      batch_size: 256
+      shuffle: false
+      drop_last: false
+      num_workers: 2
+      pin_memory: false    
+
+task:
+  _target_: src.tasks.supervised.ClassificationTask
+  model:
+    _target_:  timm.models.nfnet.nfnet_f0
+  regime:
+    - epoch: 0
+      optimizer: SGD
+      lr: 0.1
+      momentum: 0.9
+      regularizer:
+        name: 'WeightDecay'
+        value: 1e-4
+    - epoch: 30
+      lr: 0.01
+    - epoch: 60
+      lr: 0.001
+    - epoch: 80
+      lr: 0.0001

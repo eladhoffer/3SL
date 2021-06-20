@@ -33,10 +33,11 @@ def calibrate_bn(model, dataloader, num_steps=None):
 class CalibrateModel(Callback):
     """Make wandb watch model at the beginning of the run."""
 
-    def __init__(self, datamodule, split='train', num_steps=100):
+    def __init__(self, datamodule, split='train', num_steps=100, phase='train'):
         self.datamodule = datamodule
         self.split = split
         self.num_steps = num_steps
+        self.phase = phase
 
     def get_loader(self):
         if self.split == 'train':
@@ -46,6 +47,12 @@ class CalibrateModel(Callback):
         if self.split == 'test':
             return self.datamodule.test_dataloader()
 
+    def on_validation_start(self, trainer: 'pl.Trainer', pl_module: 'pl.LightningModule') -> None:
+        if self.phase == 'val':
+            calibrate_bn(trainer.model, dataloader=self.get_loader(), num_steps=self.num_steps)
+        return super().on_validation_start(trainer, pl_module)
+
     def on_train_end(self, trainer: 'pl.Trainer', pl_module: 'pl.LightningModule') -> None:
-        calibrate_bn(trainer.model, dataloader=self.get_loader(), num_steps=self.num_steps)
+        if self.phase == 'train':
+            calibrate_bn(trainer.model, dataloader=self.get_loader(), num_steps=self.num_steps)
         return super().on_train_end(trainer, pl_module)

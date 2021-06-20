@@ -42,9 +42,7 @@ data:
 task:
   _target_: src.tasks.supervised.ClassificationTask
   model:
-    _target_: src.models.resnet.resnet
-    dataset: "imagenet"
-    depth: 50
+    _target_: torchvision.models.resnet50
   regime:
     - epoch: 0
       optimizer: SGD

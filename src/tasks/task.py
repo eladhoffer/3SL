@@ -8,8 +8,10 @@ class Task(pl.LightningModule):
 
     def __init__(self, model, regime,
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
-                 **kwargs):
+                 jit_model=False, **kwargs):
         super().__init__(**kwargs)
+        if jit_model:
+            model = torch.jit.script(model)
         self.model = model
         self.regime = regime
         self.ema_momentum = ema_momentum
