@@ -31,7 +31,7 @@ def interleave(xy, batch):
 
 class MixMatchTask(SemiSupTask):
 
-    def __init__(self, model, regime, num_views=2, lam_u=75,
+    def __init__(self, model, optimizer, num_views=2, lam_u=75,
                  ramp_lam_u=16000, tau=0.95, q=[1., 0.], selective_bn_update=True,
                  normalize_logits=False, soft_target=False, T=0.5, mixup=0.75, **kwargs):
         assert len(q) == num_views
@@ -47,7 +47,7 @@ class MixMatchTask(SemiSupTask):
         if normalize_logits:
             model.temp_bias = nn.Parameter(torch.tensor([1.]))
             model.temp_target_bias = nn.Parameter(torch.tensor([1.0]))
-        super().__init__(model, regime, **kwargs)
+        super().__init__(model, optimizer, **kwargs)
         self.mixup_alpha = mixup
 
         self.mixup = MixUp(mixup)

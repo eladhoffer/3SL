@@ -2,18 +2,20 @@ import pytorch_lightning as pl
 import torch
 from src.utils_pt.optim import OptimRegime
 from copy import deepcopy
+from hydra.utils import instantiate
 
 
 class Task(pl.LightningModule):
 
-    def __init__(self, model, regime,
+    def __init__(self, model, optimizer,
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
                  jit_model=False, **kwargs):
         super().__init__(**kwargs)
+        self.model = instantiate(model)
         if jit_model:
-            model = torch.jit.script(model)
-        self.model = model
-        self.regime = regime
+            self.model = torch.jit.script(self.model)
+        self.optimizer_config = optimizer
+        self.optimizer_regime = None
         self.ema_momentum = ema_momentum
         self.ema_bn_momentum = ema_bn_momentum or ema_momentum
         if use_ema and ema_momentum > 0:
@@ -21,21 +23,29 @@ class Task(pl.LightningModule):
         self.save_hyperparameters()
 
     def configure_optimizers(self):
-        self.optim_regime = OptimRegime(self.model, self.regime)
-        return self.optim_regime.optimizer
+        if 'OptimRegime' in self.optimizer_config._target_:
+            self.optimizer_regime = instantiate(self.optimizer_config,
+                                                model=self.model, _convert_="all")
+            return self.optimizer_regime.optimizer
+        else:  # regular optimizer
+            return instantiate(self.optimizer_config,
+                               params=self.model.parameters(), _convert_="all")
 
     def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
-        self.optim_regime.update(self.current_epoch, self.global_step + 1)
-        self.optim_regime.pre_forward()
-        self.optim_regime.pre_backward()
+        if self.optimizer_regime is not None:
+            self.optimizer_regime.update(self.current_epoch, self.global_step + 1)
+            self.optimizer_regime.pre_forward()
+            self.optimizer_regime.pre_backward()
         return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
 
     def on_after_backward(self) -> None:
-        self.optim_regime.pre_step()
+        if self.optimizer_regime is not None:
+            self.optimizer_regime.pre_step()
         return super().on_after_backward()
 
     def on_before_zero_grad(self, optimizer) -> None:
-        self.optim_regime.post_step()
+        if self.optimizer_regime is not None:
+            self.optimizer_regime.post_step()
         return super().on_before_zero_grad(optimizer)
 
     def training_step_end(self, losses):

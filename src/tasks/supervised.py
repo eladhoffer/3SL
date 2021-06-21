@@ -4,8 +4,8 @@ from .task import Task
 
 
 class ClassificationTask(Task):
-    def __init__(self, model, regime, **kwargs):
-        super().__init__(model, regime, **kwargs)
+    def __init__(self, model, optimizer, **kwargs):
+        super().__init__(model, optimizer, **kwargs)
 
     def training_step(self, batch, batch_idx):
         x, y = batch

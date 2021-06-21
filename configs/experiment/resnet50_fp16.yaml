@@ -4,7 +4,7 @@
 # python run.py experiment=resnet50_imagenet.yaml
 
 defaults:
-  - override /trainer: minimal.yaml # choose trainer from 'configs/trainer/'
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
   - override /task: resnet.yaml
   - override /data: imagenet.yaml
   - override /callbacks: default.yaml
@@ -18,15 +18,9 @@ batch_size: 128
 resume: null
 
 trainer:
-  min_epochs: 1
   max_epochs: 90
   gpus: 8
-  accelerator: ddp
   precision: 16
-  benchmark: true
-  plugins:
-    _target_: pytorch_lightning.plugins.DDPPlugin
-    find_unused_parameters: False
 
 data:
   train:
@@ -43,17 +37,19 @@ task:
   _target_: src.tasks.supervised.ClassificationTask
   model:
     _target_: torchvision.models.resnet50
-  regime:
-    - epoch: 0
-      optimizer: SGD
-      lr: 0.4
-      momentum: 0.9
-      regularizer:
-        name: 'WeightDecay'
-        value: 1e-4
-    - epoch: 30
-      lr: 0.04
-    - epoch: 60
-      lr: 0.004
-    - epoch: 80
-      lr: 0.0004
+  optimizer:
+    _target_: src.optim.OptimRegime    
+    regime:
+      - epoch: 0
+        optimizer: SGD
+        lr: 0.4
+        momentum: 0.9
+        regularizer:
+          name: 'WeightDecay'
+          value: 1e-4
+      - epoch: 30
+        lr: 0.04
+      - epoch: 60
+        lr: 0.004
+      - epoch: 80
+        lr: 0.0004

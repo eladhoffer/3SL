@@ -15,14 +15,13 @@ import torchvision
 
 class UnSupTask(ClassificationTask):
 
-    def __init__(self, model, regime, **kwargs):
-        super().__init__(model, regime, **kwargs)
+    def __init__(self, model, optimizer, **kwargs):
+        super().__init__(model, optimizer, **kwargs)
 
     def unsup_loss(self, outputs, _real_target=None):
         pass
 
     def training_step(self, batch, batch_idx):
-        self.update_regime()
         unlabeled, _ = batch
         inputs, shapes = pack_inputs(unlabeled)
         output = self.model(inputs)

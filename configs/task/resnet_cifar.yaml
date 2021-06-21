@@ -2,16 +2,18 @@ _target_: src.tasks.supervised.ClassificationTask
 model:
   _target_: src.models.resnet.resnet
   dataset: cifar10
-regime:
-  - epoch: 0
-    optimizer: SGD
-    lr: 0.1
-    momentum: 0.9
-    regularizer:
-      name: 'WeightDecay'
-      value: 1e-4
-      log: true
-  - epoch: 81
-    lr: 0.01
-  - epoch: 122
-    lr: 0.001
+optimizer:
+  _target_: src.optim.OptimRegime
+  regime:
+    - epoch: 0
+      optimizer: SGD
+      lr: 0.1
+      momentum: 0.9
+      regularizer:
+        name: 'WeightDecay'
+        value: 1e-4
+        log: true
+    - epoch: 81
+      lr: 0.01
+    - epoch: 122
+      lr: 0.001

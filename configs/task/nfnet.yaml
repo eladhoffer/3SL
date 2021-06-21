@@ -1,17 +1,19 @@
 _target_: src.tasks.supervised.ClassificationTask
 model:
   _target_:  timm.models.nfnet.nfnet_f0
-regime:
-  - epoch: 0
-    optimizer: SGD
-    lr: 0.1
-    momentum: 0.9
-    regularizer:
-      name: 'WeightDecay'
-      value: 1e-4
-  - epoch: 30
-    lr: 0.01
-  - epoch: 60
-    lr: 0.001
-  - epoch: 80
-    lr: 0.0001
+optimizer:
+  _target_: src.optim.OptimRegime  
+  regime:
+    - epoch: 0
+      optimizer: SGD
+      lr: 0.1
+      momentum: 0.9
+      regularizer:
+        name: 'WeightDecay'
+        value: 1e-4
+    - epoch: 30
+      lr: 0.01
+    - epoch: 60
+      lr: 0.001
+    - epoch: 80
+      lr: 0.0001

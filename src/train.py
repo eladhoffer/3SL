@@ -38,7 +38,7 @@ def train(config: DictConfig) -> Optional[float]:
 
     # Init Lightning model
     log.info(f"Instantiating task <{config.task._target_}>")
-    task: LightningModule = hydra.utils.instantiate(config.task, _convert_="all")
+    task: LightningModule = hydra.utils.instantiate(config.task, _recursive_=False)
 
     checkpoint = config.get("checkpoint")
     if checkpoint:

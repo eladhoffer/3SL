@@ -41,7 +41,7 @@ def unpack_outputs(tensor, shapes):
 
 class SemiSupTask(ClassificationTask):
 
-    def __init__(self, model, regime, **kwargs):
+    def __init__(self, model, optimizer, **kwargs):
         # self.mixup_alpha = kwargs.pop('mixup', 0)
         # if self.mixup_alpha > 0:
         #     self.mixup_labeled = MixUp()
@@ -49,13 +49,12 @@ class SemiSupTask(ClassificationTask):
         # else:
         #     self.mixup = None
 
-        super().__init__(model, regime, **kwargs)
+        super().__init__(model, optimizer, **kwargs)
 
     def semisup_loss(self, outputs, target, unsup_outputs=None, _real_target=None):
         pass
 
     def training_step(self, batch, batch_idx):
-        self.update_regime()
         (labeled, target), (unlabeled, _unlab_target) = batch
         if unlabeled is None:
             output = self.model(labeled)
@@ -82,7 +81,7 @@ class SemiSupTask(ClassificationTask):
 
 class FixMatchTask(SemiSupTask):
 
-    def __init__(self, model, regime, num_views=2, lam_u=1, tau=0.95, q=[1., 0.],
+    def __init__(self, model, optimizer, num_views=2, lam_u=1, tau=0.95, q=[1., 0.],
                  normalize_logits=False, soft_target=False, **kwargs):
         assert len(q) == num_views
         self.lam_u = lam_u
@@ -93,7 +92,7 @@ class FixMatchTask(SemiSupTask):
         self.soft_target = soft_target
         if normalize_logits:
             model.temp_bias = nn.Parameter(torch.tensor([1.]))
-        super().__init__(model, regime, **kwargs)
+        super().__init__(model, optimizer, **kwargs)
 
     def semisup_loss(self, outputs, target, unsup_outputs=None, _real_target=None):
         if self.normalize_logits:
@@ -196,4 +195,3 @@ class FixMatchTask(SemiSupTask):
                 'unsup/acc-strong': FM.accuracy(unsup_outputs[:, 1], _real_target)})
         self.log_dict(logs, on_epoch=True, on_step=False)
         return sup_loss + self.lam_u * unsup_loss
-
