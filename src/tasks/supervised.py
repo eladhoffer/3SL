@@ -14,7 +14,8 @@ class ClassificationTask(Task):
         y_hat = self.model(x)
         loss = F.cross_entropy(y_hat, y)
         acc = FM.accuracy(y_hat.softmax(-1), y)
-        self.log('lr', self.optim_regime.get_lr()[0], on_step=True)
+        if self.optimizer_regime is not None:
+            self.log('lr', self.optimizer_regime.get_lr()[0], on_step=True)
         self.log_dict({
             'loss/train': loss,
             'accuracy/train': acc}, prog_bar=True, on_epoch=True, on_step=True)

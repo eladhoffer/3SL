@@ -23,7 +23,7 @@ class Task(pl.LightningModule):
         self.save_hyperparameters()
 
     def configure_optimizers(self):
-        if 'OptimRegime' in self.optimizer_config._target_:
+        if 'OptimRegime' in self.optimizer_config.get('_target_', None):
             self.optimizer_regime = instantiate(self.optimizer_config,
                                                 model=self.model, _convert_="all")
             return self.optimizer_regime.optimizer
