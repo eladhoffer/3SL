@@ -1,6 +1,7 @@
 from pytorch_lightning.metrics import functional as FM
 import torch.nn.functional as F
 from .task import Task
+import torch
 
 
 class ClassificationTask(Task):
@@ -19,6 +20,12 @@ class ClassificationTask(Task):
         self.log_dict({
             'loss/train': loss,
             'accuracy/train': acc}, prog_bar=True, on_epoch=True, on_step=True)
+        if self.use_sam:
+            eps_w = self.sam_step(loss)
+            loss_w_sam = F.cross_entropy(self.model(x), y)
+            # revert eps_w
+            torch._foreach_sub(list(self.parameters()), eps_w)
+            self.manual_step(loss_w_sam)
         return loss
 
     def validation_step(self, batch, batch_idx):

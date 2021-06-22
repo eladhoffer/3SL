@@ -3,13 +3,14 @@ import torch
 from src.utils_pt.optim import OptimRegime
 from copy import deepcopy
 from hydra.utils import instantiate
+from torch.nn.utils.clip_grad import clip_grad_norm_
 
 
 class Task(pl.LightningModule):
 
     def __init__(self, model, optimizer,
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
-                 jit_model=False, **kwargs):
+                 jit_model=False, use_sam=False, sam_rho=0.05, **kwargs):
         super().__init__(**kwargs)
         self.model = instantiate(model)
         if jit_model:
@@ -18,8 +19,12 @@ class Task(pl.LightningModule):
         self.optimizer_regime = None
         self.ema_momentum = ema_momentum
         self.ema_bn_momentum = ema_bn_momentum or ema_momentum
+        self.use_sam = use_sam
+        self.sam_rho = sam_rho
         if use_ema and ema_momentum > 0:
             self.create_ema(device=ema_device)
+        if use_sam:
+            self.automatic_optimization = False
         self.save_hyperparameters()
 
     def configure_optimizers(self):
@@ -75,3 +80,22 @@ class Task(pl.LightningModule):
 
     def set_benchmark(self, *kargs, **kwargs):
         pass
+
+    def manual_step(self, loss, set_to_none=False):
+        opt = self.optimizers()
+        opt.zero_grad(set_to_none=set_to_none)
+        self.manual_backward(loss)
+        opt.step()
+
+    def sam_step(self, loss, set_to_none=False):
+        self.model.zero_grad(set_to_none=set_to_none)
+        self.manual_backward(loss)
+        with torch.no_grad():
+            params, grads = zip(*[(p, p.grad)
+                                  for p in self.model.parameters() if p.grad is not None])
+            grad_norm = clip_grad_norm_(self.model.parameters(),
+                                        max_norm=float('inf'), norm_type=2.0)
+            eps_w = [grad.clone() for grad in grads]  # needed to revert in update
+            torch._foreach_mul_(eps_w, self.sam_rho / grad_norm)
+            torch._foreach_add_(params, eps_w)
+        return eps_w
