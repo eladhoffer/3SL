@@ -16,63 +16,104 @@ import warnings
 warnings.filterwarnings("ignore", "(Possibly )?corrupt EXIF data", UserWarning)
 
 
-def get_dataset(name='cifar10', split='train', transform=None,
-                target_transform=None, download=True, path='~/Datasets',
-                subset_indices=None, **kwargs):
-    train = (split == 'train')
-    root = os.path.join(os.path.expanduser(path), name)
-    if name == 'cifar10':
-        dataset = datasets.CIFAR10(root=root,
-                                   train=train,
-                                   transform=transform,
-                                   target_transform=target_transform,
-                                   download=download)
-        num_classes = 10
-        sample_size = (3, 32, 32)
-    elif name == 'cifar100':
-        dataset = datasets.CIFAR100(root=root,
-                                    train=train,
-                                    transform=transform,
-                                    target_transform=target_transform,
-                                    download=download)
-        num_classes = 10
-        sample_size = (3, 32, 32)
+class DataConfig:
+    def __init__(self, config):
+        self.config = config
 
-    elif name == 'mnist':
-        dataset = datasets.MNIST(root=root,
-                                 train=train,
-                                 transform=transform,
-                                 target_transform=target_transform,
-                                 download=download)
-        num_classes = 10
-        sample_size = (1, 28, 28)
-    elif name == 'stl10':
-        dataset = datasets.STL10(root=root,
-                                 split=split,
-                                 transform=transform,
-                                 target_transform=target_transform,
-                                 download=download)
-        num_classes = 10
-        sample_size = (3, 96, 96)
-    elif name == 'imagenet':
-        if train:
-            root = os.path.join(root, 'train')
-        else:
-            root = os.path.join(root, 'val')
-        dataset = datasets.ImageFolder(root=root,
+    @staticmethod
+    def _get_dataset(dataset, **kwargs):
+        if isinstance(dataset, dict):
+            dataset = deepcopy(dataset)
+            dataset.update(kwargs)
+            dataset = DataConfig._vision_datasets(**dataset)['dataset']
+        return dataset
+
+    @staticmethod
+    def _extract_datasets(config, **kwargs):
+        if config is None:
+            return None
+        dataset = config.get('dataset', None)
+        if dataset is not None:
+            return DataConfig._get_dataset(dataset, **kwargs)
+        return {key: DataConfig._extract_datasets(value, **kwargs)
+                for key, value in config.items() if value is not None}
+
+    @staticmethod
+    def _extract_loaders(config, **kwargs):
+        if config is None:
+            return None
+        dataset = config.get('dataset', None)
+        loader = config.get('loader', None)
+        if loader is not None:
+            dataset = DataConfig._get_dataset(dataset, **kwargs)
+            return DataLoader(dataset, **loader)
+        return {key: DataConfig._extract_loaders(value, **kwargs)
+                for key, value in config.items() if value is not None}
+
+    def dataset(self, download=False):
+        return self._extract_datasets(self.config, download=download)
+
+    def loader(self):
+        return self._extract_loaders(self.config)
+
+    @staticmethod
+    def _vision_datasets(name='cifar10', split='train', transform=None,
+                         target_transform=None, download=False, path='~/Datasets',
+                         subset_indices=None, **kwargs):
+        train = (split == 'train')
+        root = os.path.join(os.path.expanduser(path), name)
+        if name == 'cifar10':
+            dataset = datasets.CIFAR10(root=root,
+                                       train=train,
                                        transform=transform,
-                                       target_transform=target_transform)
-        num_classes = 1000
-        sample_size = (3, None, None)
+                                       target_transform=target_transform,
+                                       download=download)
+            num_classes = 10
+            sample_size = (3, 32, 32)
+        elif name == 'cifar100':
+            dataset = datasets.CIFAR100(root=root,
+                                        train=train,
+                                        transform=transform,
+                                        target_transform=target_transform,
+                                        download=download)
+            num_classes = 10
+            sample_size = (3, 32, 32)
 
-    if subset_indices is not None:
-        dataset = Subset(dataset, subset_indices)
-    return {
-        'dataset': dataset,
-        'num_classes': num_classes,
-        'sample_size': sample_size,
-        **kwargs
-    }
+        elif name == 'mnist':
+            dataset = datasets.MNIST(root=root,
+                                     train=train,
+                                     transform=transform,
+                                     target_transform=target_transform,
+                                     download=download)
+            num_classes = 10
+            sample_size = (1, 28, 28)
+        elif name == 'stl10':
+            dataset = datasets.STL10(root=root,
+                                     split=split,
+                                     transform=transform,
+                                     target_transform=target_transform,
+                                     download=download)
+            num_classes = 10
+            sample_size = (3, 96, 96)
+        elif name == 'imagenet':
+            if train:
+                root = os.path.join(root, 'train')
+            else:
+                root = os.path.join(root, 'val')
+            dataset = datasets.ImageFolder(root=root,
+                                           transform=transform,
+                                           target_transform=target_transform)
+            num_classes = 1000
+            sample_size = (3, None, None)
+
+        if subset_indices is not None:
+            dataset = Subset(dataset, subset_indices)
+        return {
+            'dataset': dataset,
+            'num_classes': num_classes,
+            'sample_size': sample_size,
+            **kwargs
+        }
 
 
 class DataModule(LightningDataModule):
@@ -97,12 +138,11 @@ class DataModule(LightningDataModule):
     ):
         super().__init__()
         self.configs = {
-            'train': train,
-            'val': val,
-            'test': test,
-            'benchmark': benchmark
+            'train': DataConfig(train) if train else None,
+            'val': DataConfig(val) if val else None,
+            'test': DataConfig(test) if test else None,
+            'benchmark': DataConfig(benchmark) if benchmark else None
         }
-        self.datasets = {}
 
     @property
     def num_classes(self) -> int:
@@ -115,29 +155,18 @@ class DataModule(LightningDataModule):
         for config in self.configs.values():
             if config is None:
                 continue
-            dataset = config.get('dataset', None)
-            if isinstance(dataset, dict):
-                dataset = deepcopy(dataset)
-                dataset['download'] = True
-                get_dataset(**dataset)
+            config.dataset(download=True)
 
     def setup(self, stage: Optional[str] = None):
         """Load data. Set variables: self.data_train, self.data_val, self.data_test."""
-        for name, config in self.configs.items():
-            if config is None:
-                continue
-            dataset = config.get('dataset', None)
-            if isinstance(dataset, dict):
-                dataset = get_dataset(**dataset)['dataset']
-            self.datasets[name] = dataset
+        pass
 
     def get_dataloader(self, name):
-        dataset = self.datasets.get(name, None)
-        if dataset is None:
+        config = self.configs.get(name, None)
+        if config is None:
             return None
         else:
-            loader_config = self.configs[name]['loader']
-            return DataLoader(dataset, **loader_config)
+            return config.loader()
 
     def train_dataloader(self):
         return self.get_dataloader('train')

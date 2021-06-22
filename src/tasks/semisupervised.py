@@ -55,7 +55,8 @@ class SemiSupTask(ClassificationTask):
         pass
 
     def training_step(self, batch, batch_idx):
-        (labeled, target), (unlabeled, _unlab_target) = batch
+        labeled, target = batch.get('labeled')
+        unlabeled, _unlab_target = batch.get('unlabeled', (None, None))
         if unlabeled is None:
             output = self.model(labeled)
             output_unsup = None

@@ -9,9 +9,9 @@ class ClassificationTask(Task):
         super().__init__(model, optimizer, **kwargs)
 
     def training_step(self, batch, batch_idx):
+        if isinstance(batch, dict):  # drop unlabled
+            batch = batch['labeled']
         x, y = batch
-        if isinstance(x, list):  # drop unlabled
-            x, y = x
         y_hat = self.model(x)
         loss = F.cross_entropy(y_hat, y)
         acc = FM.accuracy(y_hat.softmax(-1), y)
