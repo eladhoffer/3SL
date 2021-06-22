@@ -4,7 +4,7 @@
 # python run.py experiment=resnet50_imagenet.yaml
 
 defaults:
-  - override /trainer: minimal.yaml # choose trainer from 'configs/trainer/'
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
   - override /task: nfnet.yaml
   - override /data: imagenet.yaml
   - override /callbacks: default.yaml
