@@ -24,7 +24,7 @@ class ClassificationTask(Task):
             eps_w = self.sam_step(loss)
             loss_w_sam = F.cross_entropy(self.model(x), y)
             # revert eps_w
-            torch._foreach_sub(list(self.parameters()), eps_w)
+            torch._foreach_sub_(list(self.parameters()), eps_w)
             self.manual_step(loss_w_sam)
         return loss
 

@@ -95,7 +95,7 @@ class Task(pl.LightningModule):
                                   for p in self.model.parameters() if p.grad is not None])
             grad_norm = clip_grad_norm_(self.model.parameters(),
                                         max_norm=float('inf'), norm_type=2.0)
-            eps_w = [grad.clone() for grad in grads]  # needed to revert in update
-            torch._foreach_mul_(eps_w, self.sam_rho / grad_norm)
+            # needed to revert in update
+            eps_w = torch._foreach_mul(grads, self.sam_rho / grad_norm)
             torch._foreach_add_(params, eps_w)
         return eps_w
