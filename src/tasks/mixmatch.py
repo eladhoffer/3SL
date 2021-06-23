@@ -1,4 +1,3 @@
-from .task import pack_inputs, unpack_outputs, MixUp
 from .semisupervised import SemiSupTask
 from pytorch_lightning.metrics import functional as FM
 import torch
@@ -6,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
 from src.utils_pt.misc import no_bn_update
+from src.utils_pt.mixup import MixUp
 
 
 def interleave_offsets(batch, nu):
@@ -34,6 +34,7 @@ class MixMatchTask(SemiSupTask):
     def __init__(self, model, optimizer, num_views=2, lam_u=75,
                  ramp_lam_u=16000, tau=0.95, q=[1., 0.], selective_bn_update=True,
                  normalize_logits=False, soft_target=False, T=0.5, mixup=0.75, **kwargs):
+        super().__init__(model, optimizer, **kwargs)
         assert len(q) == num_views
         self.lam_u = lam_u
         self.ramp_lam_u = ramp_lam_u
@@ -45,11 +46,9 @@ class MixMatchTask(SemiSupTask):
         self.soft_target = soft_target
         self.T = T
         if normalize_logits:
-            model.temp_bias = nn.Parameter(torch.tensor([1.]))
-            model.temp_target_bias = nn.Parameter(torch.tensor([1.0]))
-        super().__init__(model, optimizer, **kwargs)
+            self.model.temp_bias = nn.Parameter(torch.tensor([1.]))
+            self.model.temp_target_bias = nn.Parameter(torch.tensor([1.0]))
         self.mixup_alpha = mixup
-
         self.mixup = MixUp(mixup)
 
     def create_target(self, unlabeled):

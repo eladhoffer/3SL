@@ -4,13 +4,16 @@ from src.utils_pt.optim import OptimRegime
 from copy import deepcopy
 from hydra.utils import instantiate
 from torch.nn.utils.clip_grad import clip_grad_norm_
+from src.utils_pt.mixup import MixUp
 
 
 class Task(pl.LightningModule):
 
     def __init__(self, model, optimizer,
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
-                 jit_model=False, use_sam=False, sam_rho=0.05, **kwargs):
+                 use_mixup=False, mixup_alpha=1.,
+                 use_sam=False, sam_rho=0.05,
+                 jit_model=False, **kwargs):
         super().__init__(**kwargs)
         self.model = instantiate(model)
         if jit_model:
@@ -25,6 +28,10 @@ class Task(pl.LightningModule):
             self.create_ema(device=ema_device)
         if use_sam:
             self.automatic_optimization = False
+        if use_mixup:
+            self.mixup = MixUp(alpha=mixup_alpha)
+        else:
+            self.mixup = None
         self.save_hyperparameters()
 
     def configure_optimizers(self):

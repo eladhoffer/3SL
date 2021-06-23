@@ -1,9 +1,9 @@
 _target_: src.tasks.semisupervised.FixMatchTask
 model:
-  _target_: src.models.resnet.wide_resnet
+  _target_: src.models.resnet.resnet
   dataset: cifar10
   depth: 28
-  width: 2
+  width: [32, 64, 128]
 optimizer:
   _target_: src.optim.OptimRegime  
   regime:
