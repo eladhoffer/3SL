@@ -1,0 +1,54 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=fixmatch_cifar10
+defaults:
+  - override /trainer: minimal.yaml # choose trainer from 'configs/trainer/'
+  - override /data: cifar10.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+batch_size: 256
+resume: null
+
+trainer:
+  gpus: [2]
+  min_epochs: 1
+  max_steps: 39000
+  max_epochs: ${trainer.max_steps}
+  benchmark: true
+
+data:
+  train:
+    loader:
+      batch_size: 256
+      multiprocessing_context: fork
+  val:
+    loader:
+      batch_size: 512
+      multiprocessing_context: fork
+      
+task:
+  _target_: src.tasks.supervised.ClassificationTask
+  model:
+    _target_: src.models.resnet.resnet
+    dataset: cifar10
+    width: [160, 320, 640]
+    depth: 28
+  optimizer:
+    _target_: src.optim.OptimRegime  
+    regime:
+      - epoch: 0
+        optimizer: SGD
+        lr: 0.1
+        weight_decay: 5e-4
+        momentum: 0.9
+        lr_scheduler:
+          name: CosineAnnealingLR
+          time_frame: step
+          T_max: ${trainer.max_steps}
+          eta_min: 0

@@ -1,6 +1,6 @@
 <div align="center">
 
-# Lightning-Hydra-Template
+# Self+Semi+Supervised Learning in Pytorch (Lightning)
 
 
 <a href="https://pytorch.org/get-started/locally/"><img alt="Python" src="https://img.shields.io/badge/-Python 3.7--3.9-blue?style=for-the-badge&logo=python&logoColor=white"></a>
@@ -10,10 +10,9 @@
 <a href="https://black.readthedocs.io/en/stable/"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-black.svg?style=for-the-badge&labelColor=gray"></a>
 <!-- <a href="https://hub.docker.com/r/ashlev/lightning-hydra"><img alt="Docker" src="https://img.shields.io/badge/docker-257bd6?style=for-the-badge&logo=docker&logoColor=white"></a> -->
 
-A clean and scalable template to kickstart your deep learning project 🚀⚡🔥<br>
-Click on [<kbd>Use this template</kbd>](https://github.com/ashleve/lightning-hydra-template/generate) to initialize new repository.
+Workbench to train self/semi and supervised deep learning models in Pytorch Lightning using Hydra configs. <br>
+Based on [lightning-hydra-template](https://github.com/ashleve/lightning-hydra-template/).
 
-*Currently uses dev version of Hydra.<br>Suggestions are always welcome!*
 
 </div>
 <br><br>
@@ -25,98 +24,12 @@ to your `README.md`.
 <br><br>
 -->
 
-## 📌&nbsp;&nbsp;Introduction
-This template tries to be as general as possible - you can easily delete any unwanted features from the pipeline or rewire the configuration, by modifying behavior in [src/train.py](src/train.py).
-
-> Effective usage of this template requires learning of a couple of technologies: [PyTorch](https://pytorch.org), [PyTorch Lightning](https://www.pytorchlightning.ai) and [Hydra](https://hydra.cc). Knowledge of some experiment logging framework like [Weights&Biases](https://wandb.com), [Neptune](https://neptune.ai) or [MLFlow](https://mlflow.org) is also recommended.
-
-**Why you should use it:** it allows you to rapidly iterate over new models/datasets and scale your projects from small single experiments to hyperparameter searches on computing clusters, without writing any boilerplate code. To my knowledge, it's one of the most convenient all-in-one technology stack for Deep Learning research. Good starting point for reproducing papers, kaggle competitions or small-team research projects. It's also a collection of best practices for efficient workflow and reproducibility.
-
-**Why you shouldn't use it:** Lightning and Hydra are not yet mature, which means you might run into some bugs sooner or later. Also, even though Lightning is very flexible, it's not well suited for every possible deep learning task.
-
-### Why PyTorch Lightning?
-[PyTorch Lightning](https://github.com/PyTorchLightning/pytorch-lightning) is a lightweight PyTorch wrapper for high-performance AI research.
-It makes your code neatly organized and provides lots of useful features, like ability to run model on CPU, GPU, multi-GPU cluster and TPU.
-
-
-### Why Hydra?
-[Hydra](https://github.com/facebookresearch/hydra) is an open-source Python framework that simplifies the development of research and other complex applications. The key feature is the ability to dynamically create a hierarchical configuration by composition and override it through config files and the command line. It  allows you to conveniently manage experiments and provides many useful plugins, like [Optuna Sweeper](https://hydra.cc/docs/next/plugins/optuna_sweeper) for hyperparameter search, or [Ray Launcher](https://hydra.cc/docs/next/plugins/ray_launcher) for running jobs on a cluster.
-<br>
-<br>
-<br>
-
-
-## Main Ideas Of This Template
-- **Predefined Structure**: clean and scalable so that work can easily be extended and replicated (see [#Project Structure](#project-structure))
-- **Rapid Experimentation**: thanks to automating pipeline with config files and hydra command line superpowers (see [#Your Superpowers](#your-superpowers))
-- **Little Boilerplate**: so pipeline can be easily modified (see [src/train.py](src/train.py))
-- **Main Configuration**: main config file specifies default training configuration (see [#Main Project Configuration](#main-project-configuration))
-- **Experiment Configurations**: stored in a separate folder, they can be composed out of smaller configs, override chosen parameters or define everything from scratch (see [#Experiment Configuration](#experiment-configuration))
-- **Workflow**: comes down to 4 simple steps (see [#Workflow](#workflow))
-- **Experiment Tracking**: many logging frameworks can be easily integrated! (see [#Experiment Tracking](#experiment-tracking))
-- **Logs**: all logs (checkpoints, data from loggers, chosen hparams, etc.) are stored in a convenient folder structure imposed by Hydra (see [#Logs](#logs))
-- **Hyperparameter Search**: made easier with Hydra built in plugins like [Optuna Sweeper](https://hydra.cc/docs/next/plugins/optuna_sweeper) (see [#Hyperparameter Search](#hyperparameter-search))
-- **Tests**: unit tests and smoke tests (see [#Tests](#tests))
-- **Extra Features**: optional utilities to make your life easier (see [#Extra Features](#extra-features))
-- **Best Practices**: a couple of recommended tools, practices and standards for efficient workflow and reproducibility (see [#Best Practices](#best-practices))
-<br>
-
-
-## Project Structure
-The directory structure of new project looks like this:
-```
-├── configs                 <- Hydra configuration files
-│   ├── callbacks               <- Callbacks configs
-│   ├── datamodule              <- Datamodule configs
-│   ├── experiment              <- Experiment configs
-│   ├── hparams_search          <- Hyperparameter search configs
-│   ├── hydra                   <- Hydra related configs
-│   ├── logger                  <- Logger configs
-│   ├── model                   <- Model configs
-│   ├── trainer                 <- Trainer configs
-│   │
-│   └── config.yaml             <- Main project configuration file
-│
-├── data                    <- Project data
-│
-├── logs                    <- Logs generated by Hydra and PyTorch Lightning loggers
-│
-├── notebooks               <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                              the creator's initials, and a short `-` delimited description, e.g.
-│                              `1.0-jqp-initial-data-exploration.ipynb`.
-│
-├── tests                   <- Tests of any kind
-│   ├── smoke
-│   └── unit
-│
-├── src
-│   ├── callbacks               <- Lightning callbacks
-│   ├── datamodules             <- Lightning datamodules
-│   ├── models                  <- Lightning models
-│   ├── utils                   <- Utility scripts
-│   │
-│   └── train.py                <- Training pipeline
-│
-├── run.py                  <- Run any pipeline with chosen experiment configuration
-│
-├── .env.example            <- Template of the file for storing private environment variables
-├── .gitignore              <- List of files/folders ignored by git
-├── .pre-commit-config.yaml <- Configuration of automatic code formatting
-├── conda_env_gpu.yaml      <- File for installing conda environment
-├── Dockerfile              <- File for building docker container
-├── requirements.txt        <- File for installing python dependencies
-├── setup.cgf               <- Configurations of linters and pytest
-├── LICENSE
-└── README.md
-```
-<br>
-
 
 ## 🚀&nbsp;&nbsp;Quickstart
 ```yaml
 # clone project
-git clone https://github.com/ashleve/lightning-hydra-template
-cd lightning-hydra-template
+git clone https://github.com/ehoffer/3SL
+cd 3SL
 
 # [OPTIONAL] create conda environment
 conda env create -f conda_env_gpu.yaml -n myenv
@@ -126,11 +39,6 @@ conda activate myenv
 pip install -r requirements.txt
 ```
 
-Template contains example with MNIST classification.<br>
-When running `python run.py` you should see something like this:
-<div align="center">
-
-![](https://github.com/ashleve/lightning-hydra-template/blob/resources/terminal.png)
 
 </div>
 

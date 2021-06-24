@@ -34,7 +34,7 @@ train:
       split: train
       transform: ${data.augmentation}
     loader:
-      batch_size: ${batch_size}
+      batch_size: 64
       shuffle: true
       drop_last: true
       num_workers: 8
@@ -50,7 +50,7 @@ train:
           - ${data.augmentation}
           - ${data.strong_augmentation}
     loader:
-      batch_size: ${batch_size}
+      batch_size: 448
       shuffle: true
       drop_last: true
       num_workers: 8
