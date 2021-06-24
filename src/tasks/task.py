@@ -12,7 +12,7 @@ class Task(pl.LightningModule):
     def __init__(self, model, optimizer,
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
                  use_mixup=False, mixup_alpha=1.,
-                 use_sam=False, sam_rho=0.05,
+                 use_sam=False, sam_rho=0.05, sam_compare_grad=False,
                  jit_model=False, **kwargs):
         super().__init__(**kwargs)
         self.model = instantiate(model)
@@ -24,6 +24,7 @@ class Task(pl.LightningModule):
         self.ema_bn_momentum = ema_bn_momentum or ema_momentum
         self.use_sam = use_sam
         self.sam_rho = sam_rho
+        self.sam_compare_grad = sam_compare_grad
         if use_ema and ema_momentum > 0:
             self.create_ema(device=ema_device)
         if use_sam:
@@ -64,6 +65,10 @@ class Task(pl.LightningModule):
         self.update_ema()
         return losses.mean()
 
+    def log_lr(self, **kwargs):
+        if self.optimizer_regime is not None:
+            self.log('lr', self.optimizer_regime.get_lr()[0], **kwargs)
+
     def create_ema(self, device=None):
         self._model_ema = deepcopy(self.model)
         if device is not None:
@@ -89,9 +94,14 @@ class Task(pl.LightningModule):
         pass
 
     def manual_step(self, loss, set_to_none=False):
+        if self.use_sam and self.sam_compare_grad:
+            grad_sam = torch.cat([p.grad.view(-1) for p in self.model.parameters()])
         opt = self.optimizers()
         opt.zero_grad(set_to_none=set_to_none)
         self.manual_backward(loss)
+        if self.use_sam and self.sam_compare_grad:
+            grad = torch.cat([p.grad.view(-1) for p in self.model.parameters()])
+            self.log('sam/grad_eps_diff', (grad - grad_sam).norm())
         opt.step()
 
     def sam_step(self, loss, set_to_none=False):

@@ -24,8 +24,7 @@ class ClassificationTask(Task):
         y_hat = self.model(x)
         loss = self.loss(y_hat, y)
         acc = FM.accuracy(y_hat.softmax(-1), y)
-        if self.optimizer_regime is not None:
-            self.log('lr', self.optimizer_regime.get_lr()[0], on_step=True)
+        self.log_lr(on_step=True)
         self.log_dict({
             'loss/train': loss,
             'accuracy/train': acc}, prog_bar=True, on_epoch=True, on_step=True)

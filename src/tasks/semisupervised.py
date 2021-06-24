@@ -29,8 +29,7 @@ class SemiSupTask(ClassificationTask):
         if output.dim() > 2:  # batch augmented
             output = output.mean(1)
         acc = FM.accuracy(output.softmax(-1), target)
-        if self.optimizer_regime is not None:
-            self.log('lr', self.optimizer_regime.get_lr()[0], on_step=True)
+        self.log_lr(on_step=True)
         self.log_dict({
             'loss/train': loss,
             'accuracy/train': acc}, prog_bar=True, on_epoch=True, on_step=True)

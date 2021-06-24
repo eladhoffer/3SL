@@ -33,8 +33,9 @@ class MixMatchTask(SemiSupTask):
 
     def __init__(self, model, optimizer, num_views=2, lam_u=75,
                  ramp_lam_u=16000, tau=0.95, q=[1., 0.], selective_bn_update=True,
-                 normalize_logits=False, soft_target=False, T=0.5, mixup=0.75, **kwargs):
-        super().__init__(model, optimizer, **kwargs)
+                 normalize_logits=False, soft_target=False, T=0.5,
+                 use_mixup=True, mixup_alpha=0.75, **kwargs):
+        super().__init__(model, optimizer, use_mixup=use_mixup, mixup_alpha=mixup_alpha, **kwargs)
         assert len(q) == num_views
         self.lam_u = lam_u
         self.ramp_lam_u = ramp_lam_u
@@ -48,8 +49,6 @@ class MixMatchTask(SemiSupTask):
         if normalize_logits:
             self.model.temp_bias = nn.Parameter(torch.tensor([1.]))
             self.model.temp_target_bias = nn.Parameter(torch.tensor([1.0]))
-        self.mixup_alpha = mixup
-        self.mixup = MixUp(mixup)
 
     def create_target(self, unlabeled):
         if self.normalize_logits:
