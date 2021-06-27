@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
 from .task import Task
 import torch
+from hydra.utils import instantiate
 
 
 class ClassificationTask(Task):
@@ -41,7 +42,7 @@ class ClassificationTask(Task):
         model.eval()
         x, y = batch
         y_hat = model(x)
-        loss = F.cross_entropy(y_hat, y)
+        loss = cross_entropy(y_hat, y)
         acc = FM.accuracy(y_hat.softmax(dim=-1), y)
 
         # loss is tensor. The Checkpoint Callback is monitoring 'checkpoint_on'
@@ -54,3 +55,36 @@ class ClassificationTask(Task):
         metrics = {'accuracy/test': metrics['val_acc'],
                    'loss/test': metrics['val_loss']}
         self.log_dict(metrics)
+
+
+class DistillationTask(ClassificationTask):
+    def __init__(self, model, optimizer, teacher, T=1.0,
+                 jit_teacher=False, **kwargs):
+        super().__init__(model, optimizer, **kwargs)
+        self.teacher = instantiate(teacher)
+        self.teacher.eval()
+        for p in self.teacher.parameters():
+            p.requires_grad_(False)
+        if jit_teacher:
+            self.teacher = torch.jit.script(self.teacher)
+
+        self.T = T
+
+    def loss(self, output, target):
+        with torch.no_grad():
+            target /= self.T
+            if self.mixup:
+                target = self.mixup.mix_target(target, output.size(-1))
+                target = F.log_softmax(target, -1)
+        output = F.log_softmax(output / self.T, -1)
+        return F.kl_div(output, target, reduction='batchmean', log_target=True)
+
+    def training_step(self, batch, batch_idx):
+        if isinstance(batch, dict):  # drop unlabled
+            batch = batch['labeled']
+        x, y = batch
+        with torch.no_grad():
+            self.teacher.eval()
+            target = self.teacher(x)
+        dist_batch = (x, target)
+        return super().training_step(dist_batch)
