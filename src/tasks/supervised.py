@@ -75,7 +75,7 @@ class DistillationTask(ClassificationTask):
             target /= self.T
             if self.mixup:
                 target = self.mixup.mix_target(target, output.size(-1))
-                target = F.log_softmax(target, -1)
+            target = F.log_softmax(target, -1)
         output = F.log_softmax(output / self.T, -1)
         return F.kl_div(output, target, reduction='batchmean', log_target=True)
 
