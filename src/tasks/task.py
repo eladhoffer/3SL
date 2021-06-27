@@ -41,8 +41,19 @@ class Task(pl.LightningModule):
                                                 model=self.model, _convert_="all")
             return self.optimizer_regime.optimizer
         else:  # regular optimizer
-            return instantiate(self.optimizer_config,
-                               params=self.model.parameters(), _convert_="all")
+            optimizer = self.optimizer_config.get('optimizer', self.optimizer_config)
+            lr_scheduler = self.optimizer_config.get('lr_scheduler', None)
+            optimizer = instantiate(optimizer,
+                                    params=self.model.parameters(), _convert_="all")
+            if lr_scheduler is None:
+                return optimizer
+            else:
+                lr_scheduler['scheduler'] = instantiate(lr_scheduler['scheduler'],
+                                                        optimizer=optimizer, _convert_="all")
+                return {
+                    'optimizer': optimizer,
+                    'lr_scheduler': lr_scheduler
+                }
 
     def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
         if self.optimizer_regime is not None:
