@@ -7,13 +7,14 @@ from hydra.utils import instantiate
 
 
 class ClassificationTask(Task):
-    def __init__(self, model, optimizer, **kwargs):
+    def __init__(self, model, optimizer, label_smoothing=None, **kwargs):
         super().__init__(model, optimizer, **kwargs)
+        self.label_smoothing = label_smoothing
 
     def loss(self, output, target):
         if self.mixup:
             target = self.mixup.mix_target(target, output.size(-1))
-        return cross_entropy(output, target)
+        return cross_entropy(output, target, smooth_eps=self.label_smoothing)
 
     def training_step(self, batch, batch_idx):
         if isinstance(batch, dict):  # drop unlabled
@@ -37,24 +38,29 @@ class ClassificationTask(Task):
             self.manual_step(loss_w_sam)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def evaluation_step(self, batch, batch_idx):
         model = getattr(self, '_model_ema', self.model)
         model.eval()
         x, y = batch
         y_hat = model(x)
-        loss = cross_entropy(y_hat, y)
+        loss = self.loss(y_hat, y)
         acc = FM.accuracy(y_hat.softmax(dim=-1), y)
+        metrics = {'accuracy': acc, 'loss': loss}
+        return metrics
 
-        # loss is tensor. The Checkpoint Callback is monitoring 'checkpoint_on'
-        metrics = {'accuracy/val': acc, 'loss/val': loss}
+    def validation_step(self, batch, batch_idx):
+        metrics = self.evaluation_step(batch, batch_idx)
+        metrics = {'accuracy/val': metrics['accuracy'],
+                   'loss/val': metrics['loss']}
         self.log_dict(metrics)
-        return loss
+        return metrics
 
     def test_step(self, batch, batch_idx):
-        metrics = self.validation_step(batch, batch_idx)
-        metrics = {'accuracy/test': metrics['val_acc'],
-                   'loss/test': metrics['val_loss']}
+        metrics = self.evaluation_step(batch, batch_idx)
+        metrics = {'accuracy/test': metrics['accuracy'],
+                   'loss/test': metrics['loss']}
         self.log_dict(metrics)
+        return metrics
 
 
 class DistillationTask(ClassificationTask):
