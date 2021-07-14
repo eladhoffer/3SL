@@ -20,6 +20,7 @@ class Task(pl.LightningModule):
             self.model = torch.jit.script(self.model)
         self.optimizer_config = optimizer
         self.optimizer_regime = None
+        self.regularizer = None
         self.ema_momentum = ema_momentum
         self.ema_bn_momentum = ema_bn_momentum or ema_momentum
         self.use_sam = use_sam
@@ -43,6 +44,9 @@ class Task(pl.LightningModule):
         else:  # regular optimizer
             optimizer = self.optimizer_config.get('optimizer', self.optimizer_config)
             lr_scheduler = self.optimizer_config.get('lr_scheduler', None)
+            regularizer = self.optimizer_config.get('regularizer', None)
+            if regularizer is not None:
+                self.regularizer = instantiate(regularizer, model=self.model)
             optimizer = instantiate(optimizer,
                                     params=self.model.parameters(), _convert_="all")
             if lr_scheduler is None:
@@ -60,16 +64,23 @@ class Task(pl.LightningModule):
             self.optimizer_regime.update(self.current_epoch, self.global_step + 1)
             self.optimizer_regime.pre_forward()
             self.optimizer_regime.pre_backward()
+        if self.regularizer is not None:
+            self.regularizer.pre_forward()
+            self.regularizer.pre_backward()
         return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
 
     def on_after_backward(self) -> None:
         if self.optimizer_regime is not None:
             self.optimizer_regime.pre_step()
+        if self.regularizer is not None:
+            self.regularizer.pre_step()
         return super().on_after_backward()
 
     def on_before_zero_grad(self, optimizer) -> None:
         if self.optimizer_regime is not None:
             self.optimizer_regime.post_step()
+        if self.regularizer is not None:
+            self.regularizer.post_step()
         return super().on_before_zero_grad(optimizer)
 
     def training_step_end(self, losses):
