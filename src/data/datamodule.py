@@ -1,16 +1,9 @@
 import os
 import torch
 from torchvision import datasets
-from torchvision.transforms import transforms
-from typing import Optional, Tuple
+from typing import Optional
 from pytorch_lightning import LightningDataModule
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data.sampler import RandomSampler
-from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split, Subset
-from torch._utils import _accumulate
-from src.utils_pt.regime import Regime
-from src.utils_pt.dataset import IndexedFileDataset
-from itertools import chain
+from torch.utils.data import DataLoader, Subset
 from copy import deepcopy
 import warnings
 warnings.filterwarnings("ignore", "(Possibly )?corrupt EXIF data", UserWarning)
@@ -34,7 +27,12 @@ class DataConfig:
             return None
         dataset = config.get('dataset', None)
         if dataset is not None:
-            return DataConfig._get_dataset(dataset, **kwargs)
+            dataset = DataConfig._get_dataset(dataset, **kwargs)
+            transform = config.get('transform', None)
+            if transform is not None:
+                dataset = transform(dataset)
+            return dataset
+
         return {key: DataConfig._extract_datasets(value, **kwargs)
                 for key, value in config.items() if value is not None}
 
@@ -42,10 +40,9 @@ class DataConfig:
     def _extract_loaders(config, **kwargs):
         if config is None:
             return None
-        dataset = config.get('dataset', None)
         loader = config.get('loader', None)
         if loader is not None:
-            dataset = DataConfig._get_dataset(dataset, **kwargs)
+            dataset = DataConfig._extract_datasets(config, **kwargs)
             return DataLoader(dataset, **loader)
         return {key: DataConfig._extract_loaders(value, **kwargs)
                 for key, value in config.items() if value is not None}

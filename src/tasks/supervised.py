@@ -50,15 +50,13 @@ class ClassificationTask(Task):
 
     def validation_step(self, batch, batch_idx):
         metrics = self.evaluation_step(batch, batch_idx)
-        metrics = {'accuracy/val': metrics['accuracy'],
-                   'loss/val': metrics['loss']}
+        metrics = {f'{k}/val': v for k, v in metrics.items()}
         self.log_dict(metrics)
         return metrics
 
     def test_step(self, batch, batch_idx):
         metrics = self.evaluation_step(batch, batch_idx)
-        metrics = {'accuracy/test': metrics['accuracy'],
-                   'loss/test': metrics['loss']}
+        metrics = {f'{k}/test': v for k, v in metrics.items()}
         self.log_dict(metrics)
         return metrics
 
