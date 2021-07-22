@@ -1,7 +1,6 @@
 _target_: src.tasks.supervised.ClassificationTask
 model:
   _target_: src.models.resnet.resnet
-  dataset: imagenet
 optimizer:
   _target_: src.optim.OptimRegime  
   regime:

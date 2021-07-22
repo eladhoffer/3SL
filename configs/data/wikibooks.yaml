@@ -1,0 +1,40 @@
+_target_: src.data.DataModule
+max_length: 128
+cache_dir: '/home/ehoffer/Datasets/wikibooks'
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: roberta-base
+mlm_collator:
+  _target_: transformers.data.data_collator.DataCollatorForLanguageModeling
+  tokenizer: ${data.tokenizer}
+  mlm: true
+  mlm_probability: 0.15
+  pad_to_multiple_of: 1
+train:
+  dataset:
+    _target_: src.data.datasets.WikiBooks
+    tokenizer: ${data.tokenizer}
+    split: train[:99%]
+    max_length: ${data.max_length}
+    cache_dir: ${data.cache_dir}
+  loader:
+    batch_size: ${batch_size}
+    collate_fn: ${data.mlm_collator}
+    shuffle: true
+    drop_last: true
+    num_workers: 8
+    pin_memory: true
+val:
+  dataset:
+    _target_: src.data.datasets.WikiBooks
+    tokenizer: ${data.tokenizer}
+    split: train[99%:]
+    max_length: ${data.max_length}  
+    cache_dir: ${data.cache_dir}  
+  loader:
+    batch_size: ${eval_batch_size}
+    collate_fn: ${data.mlm_collator}
+    shuffle: false
+    drop_last: false
+    num_workers: 8
+    pin_memory: true

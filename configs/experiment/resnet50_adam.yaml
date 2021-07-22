@@ -1,0 +1,68 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=resnet50_imagenet.yaml
+
+defaults:
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /task: resnet.yaml
+  - override /data: imagenet.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+batch_size: 128
+resume: null
+
+trainer:
+  max_epochs: 100
+  max_steps: 125100
+  gpus: 8
+  precision: 16
+
+data:
+  train:
+    loader:
+      batch_size: 128
+      num_workers: 2
+      pin_memory: false
+  val:
+    loader:
+      batch_size: 512
+      num_workers: 2
+      pin_memory: false   
+task:
+  _target_: src.tasks.supervised.ClassificationTask
+  model:
+    _target_: torchvision.models.resnet50
+    zero_init_residual: true
+  optimizer:
+    _target_: src.optim.OptimRegime    
+    regime:
+      - epoch: 0
+        optimizer: SGD
+        lr: 0.4
+        momentum: 0.9
+        regularizer:
+          name: 'WeightDecay'
+          value: 1e-4    
+      - epoch: 5
+        optimizer: Adam
+        lr: 1e-4
+        eps: 1e-6
+        betas: (0.9, 0.98)
+        regularizer:
+          name: WeightDecay
+          value: 1e-4
+          pre_op: false
+          post_op: true
+        lr_scheduler:
+          name: CosineAnnealingLR
+          time_frame: step
+          T_max: ${trainer.max_steps}
+          eta_min: 0
+  use_sam: true
+  sam_rho: 0.05

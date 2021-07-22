@@ -3,6 +3,7 @@ from pytorch_lightning.metrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
 import torch
+import math
 
 
 class MaskedLanguageModelTask(ClassificationTask):
@@ -39,12 +40,33 @@ class MaskedLanguageModelTask(ClassificationTask):
             self.manual_step(loss_w_sam)
         return loss
 
+    def training_step_end(self, losses):
+        return super().training_step_end(losses)
+
     def evaluation_step(self, batch, batch_idx):
         model = getattr(self, '_model_ema', self.model)
         model.eval()
         x = {ikey: batch[ikey] for ikey in self.input_keys}
         y = batch['labels']
+        breakpoint()
+
         y_hat = self.model(**x)[self.output_key]
         loss = self.loss(y_hat, y)
         metrics = {'loss': loss}
         return metrics
+
+    # def evaluation_step_end(self, batch, batch_idx):
+    #     metrics = {'loss': loss}
+    #     return super().evaluation_step(batch, batch_idx)
+
+    # def validation_step(self, batch, batch_idx):
+    #     return super().validation_step(batch, batch_idx)
+
+    # def validation_step_end(self, *args, **kwargs) -> Optional[STEP_OUTPUT]:
+    #     return super().validation_step_end(*args, **kwargs)
+
+    # def test_step(self, batch, batch_idx):
+    #     return super().test_step(batch, batch_idx)
+
+    # def test_step_end(self, *args, **kwargs) -> Optional[STEP_OUTPUT]:
+    #     return super().test_step_end(*args, **kwargs)
