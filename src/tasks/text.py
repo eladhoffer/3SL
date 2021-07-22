@@ -12,7 +12,7 @@ class MaskedLanguageModelTask(ClassificationTask):
     """
 
     def __init__(self, model, optimizer,
-                 input_keys=['input_ids', 'attention_mask'], output_key='prediction_logits',
+                 input_keys=['input_ids', 'attention_mask'], output_key='logits',
                  **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.input_keys = input_keys
@@ -21,7 +21,17 @@ class MaskedLanguageModelTask(ClassificationTask):
     def loss(self, output, target):
         output = output.flatten(0, 1)
         target = target.flatten(0, 1)
-        return cross_entropy(output, target, smooth_eps=self.label_smoothing)
+        valid_tokens = target.ge(0)
+        output = output[valid_tokens, :]
+        target = target[valid_tokens]
+        output = F.log_softmax(output, dim=-1, dtype=torch.float)
+        loss = cross_entropy(output, target,
+                             smooth_eps=self.label_smoothing, from_logits=False)
+        return loss
+
+    def log_lr(self, **kwargs):
+        kwargs.setdefault('prog_bar', True)
+        return super().log_lr(**kwargs)
 
     def training_step(self, batch, batch_idx):
         x = {ikey: batch[ikey] for ikey in self.input_keys}
@@ -48,8 +58,6 @@ class MaskedLanguageModelTask(ClassificationTask):
         model.eval()
         x = {ikey: batch[ikey] for ikey in self.input_keys}
         y = batch['labels']
-        breakpoint()
-
         y_hat = self.model(**x)[self.output_key]
         loss = self.loss(y_hat, y)
         metrics = {'loss': loss}

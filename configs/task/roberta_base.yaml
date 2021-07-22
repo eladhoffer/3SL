@@ -3,7 +3,7 @@ model:
   _target_: transformers.RobertaForMaskedLM
   config:
     _target_: transformers.RobertaConfig
-    num_hidden_layers: 6
+    vocab_size: 50265
 optimizer:
   _target_: src.optim.OptimRegime
   regime:
@@ -12,5 +12,9 @@ optimizer:
       betas: (0.9, 0.98)
       eps: 1e-6
       weight_decay: 0.01
-      step_lambda: "lambda t: {'lr': 1e-3 * min(t ** -0.5, t * 10000 ** -1.5)}"
+      step_lambda:
+        _target_: src.optim.scheduler.linear_warmup_and_decay
+        lr: 1e-3
+        warmup_steps: 10000 
+        total_steps: ${trainer.max_steps}
 label_smoothing: 0.1      

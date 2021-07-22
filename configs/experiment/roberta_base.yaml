@@ -4,8 +4,8 @@
 # python run.py experiment=roberta_base.yaml
 
 defaults:
-  - override /trainer: minimal.yaml # choose trainer from 'configs/trainer/'
-  - override /task: roberta_mlm.yaml
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /task: roberta_base.yaml
   - override /data: wikibooks.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
@@ -14,23 +14,25 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-batch_size: 3
+batch_size: 8
 resume: null
 
 trainer:
-  max_steps: 100000
+  max_steps: 125000
   max_epochs: ${trainer.max_steps}
-  gpus: [0]
+  gpus: 8
   precision: 16
+  accumulate_grad_batches: 8
+  track_grad_norm: 2
 
 data:
   train:
     loader:
-      batch_size: 2
+      batch_size: ${batch_size}
       num_workers: 2
       pin_memory: false
   val:
     loader:
-      batch_size: 2
+      batch_size: ${batch_size}
       num_workers: 2
       pin_memory: false   
