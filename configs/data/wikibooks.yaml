@@ -9,7 +9,7 @@ mlm_collator:
   tokenizer: ${data.tokenizer}
   mlm: true
   mlm_probability: 0.15
-  pad_to_multiple_of: 1
+  pad_to_multiple_of: 8
 train:
   dataset:
     _target_: src.data.datasets.WikiBooks

@@ -3,6 +3,7 @@ from pytorch_lightning.metrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
 import torch
+import torch.nn as nn
 import math
 
 
@@ -11,21 +12,43 @@ class MaskedLanguageModelTask(ClassificationTask):
     A task for training a masked language model.
     """
 
-    def __init__(self, model, optimizer,
-                 input_keys=['input_ids', 'attention_mask'], output_key='logits',
+    def __init__(self, model, optimizer, model_type="huggingface",
                  **kwargs):
         super().__init__(model, optimizer, **kwargs)
-        self.input_keys = input_keys
-        self.output_key = output_key
+        self.model_type = model_type
 
-    def loss(self, output, target):
-        output = output.flatten(0, 1)
-        target = target.flatten(0, 1)
-        valid_tokens = target.ge(0)
-        output = output[valid_tokens, :]
-        target = target[valid_tokens]
+    def step(self, batch, model=None):
+        if model is None:
+            model = self.model
+        masked_tokens = batch['labels'].ge(0)
+        num_tokens = masked_tokens.int().sum()
+        y = batch['labels'][masked_tokens]
+        lengths = batch['attention_mask'].int().sum(-1)
+
+        if self.model_type == "fairseq":
+            x = {
+                'src_tokens': batch['input_ids'],
+                'src_lengths': lengths,
+                'masked_tokens': masked_tokens
+            }
+            y_hat = model(**x)[0]
+        elif self.model_type == "huggingface":
+            x = {ikey: batch[ikey] for ikey in ['input_ids', 'attention_mask']}
+            optimized_model = hasattr(model, 'lm_head') \
+                and hasattr(model.lm_head, 'set_masked_tokens')
+            if optimized_model:
+                model.lm_head.set_masked_tokens(masked_tokens)
+            y_hat = model(**x)['logits']
+            if not optimized_model:
+                y_hat = y_hat[masked_tokens, :]
+
+        return {'loss': self.loss(y_hat, y, reduction='sum'),
+                'num_tokens': num_tokens,
+                'length': lengths.mean()}
+
+    def loss(self, output, target, reduction='mean'):
         output = F.log_softmax(output, dim=-1, dtype=torch.float)
-        loss = cross_entropy(output, target,
+        loss = cross_entropy(output, target, reduction=reduction,
                              smooth_eps=self.label_smoothing, from_logits=False)
         return loss
 
@@ -33,48 +56,57 @@ class MaskedLanguageModelTask(ClassificationTask):
         kwargs.setdefault('prog_bar', True)
         return super().log_lr(**kwargs)
 
+    def log_metrics(self, output, phase='train', **kwargs):
+        with torch.no_grad():
+            loss = output['loss']
+            num_tokens = output['num_tokens']
+            length = output['length'].mean()
+            avg_loss = (loss / num_tokens) / math.log(2)
+            self.log_dict({
+                f'loss/{phase}': avg_loss,
+                f'ppl/{phase}': 2. ** avg_loss,
+                f'num_tokens/{phase}': num_tokens,
+                f'length/{phase}': length},
+                **kwargs)
+
     def training_step(self, batch, batch_idx):
-        x = {ikey: batch[ikey] for ikey in self.input_keys}
-        y = batch['labels']
-        y_hat = self.model(**x)[self.output_key]
-        loss = self.loss(y_hat, y)
+        output = self.step(batch)
         self.log_lr(on_step=True)
-        self.log_dict({
-            'loss/train': loss}, prog_bar=True, on_epoch=True, on_step=True)
         if self.use_sam:
-            eps_w = self.sam_step(loss)
-            y_hat = self.model(**x)[self.output_key]
-            loss_w_sam = self.loss(y_hat, y)
+            eps_w = self.sam_step(output['loss'])
+            loss_w_sam = self.step(batch)['loss']
             # revert eps_w
             torch._foreach_sub_(list(self.parameters()), eps_w)
             self.manual_step(loss_w_sam)
-        return loss
+        return output
 
-    def training_step_end(self, losses):
-        return super().training_step_end(losses)
+    def training_step_end(self, output):
+        output['loss'] = output['loss'].sum()
+        output['num_tokens'] = output['num_tokens'].sum()
+        self.log_metrics(output, phase='train',
+                         prog_bar=True, on_step=True)
+        self.update_ema()
+        return output
 
     def evaluation_step(self, batch, batch_idx):
         model = getattr(self, '_model_ema', self.model)
         model.eval()
-        x = {ikey: batch[ikey] for ikey in self.input_keys}
-        y = batch['labels']
-        y_hat = self.model(**x)[self.output_key]
-        loss = self.loss(y_hat, y)
-        metrics = {'loss': loss}
-        return metrics
+        return self.step(batch, model=model)
 
-    # def evaluation_step_end(self, batch, batch_idx):
-    #     metrics = {'loss': loss}
-    #     return super().evaluation_step(batch, batch_idx)
+    def validation_step(self, batch, batch_idx):
+        return self.evaluation_step(batch, batch_idx)
 
-    # def validation_step(self, batch, batch_idx):
-    #     return super().validation_step(batch, batch_idx)
+    def validation_step_end(self, output):
+        output['loss'] = output['loss'].sum()
+        output['num_tokens'] = output['num_tokens'].sum()
+        self.log_metrics(output, phase='val')
+        return output
 
-    # def validation_step_end(self, *args, **kwargs) -> Optional[STEP_OUTPUT]:
-    #     return super().validation_step_end(*args, **kwargs)
+    def test_step(self, batch, batch_idx):
+        return self.evaluation_step(batch, batch_idx)
 
-    # def test_step(self, batch, batch_idx):
-    #     return super().test_step(batch, batch_idx)
-
-    # def test_step_end(self, *args, **kwargs) -> Optional[STEP_OUTPUT]:
-    #     return super().test_step_end(*args, **kwargs)
+    def test_step_end(self, output):
+        output['loss'] = output['loss'].sum()
+        output['num_tokens'] = output['num_tokens'].sum()
+        self.log_metrics(output, phase='val')
+        return output

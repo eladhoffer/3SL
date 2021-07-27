@@ -14,7 +14,7 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-batch_size: 8
+batch_size: 64
 resume: null
 
 trainer:
@@ -22,17 +22,21 @@ trainer:
   max_epochs: ${trainer.max_steps}
   gpus: 8
   precision: 16
-  accumulate_grad_batches: 8
-  track_grad_norm: 2
+  accumulate_grad_batches: 4
+  val_check_interval: 4000
 
 data:
   train:
     loader:
-      batch_size: ${batch_size}
-      num_workers: 2
+      batch_size: 64
+      num_workers: 0
       pin_memory: false
   val:
     loader:
-      batch_size: ${batch_size}
-      num_workers: 2
-      pin_memory: false   
+      batch_size: 64
+      num_workers: 0
+      pin_memory: false
+
+callbacks:
+  model_checkpoint:
+    monitor: "loss/val" 

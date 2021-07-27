@@ -1,9 +1,7 @@
 _target_: src.tasks.text.MaskedLanguageModelTask
 model:
-  _target_: src.models.huggingface.RobertaForMaskedLM
-  config:
-    _target_: transformers.RobertaConfig
-    vocab_size: 50265
+  _target_: src.models.fairseq.roberta
+  vocab_dir: /home/ehoffer/PyTorch/fairseq_projects/roberta
 optimizer:
   _target_: src.optim.OptimRegime
   regime:
@@ -15,6 +13,6 @@ optimizer:
       step_lambda:
         _target_: src.optim.scheduler.linear_warmup_and_decay
         lr: 1e-3
-        init_lr: 1e-5
         warmup_steps: 4000 
         total_steps: ${trainer.max_steps}
+model_type: fairseq        
