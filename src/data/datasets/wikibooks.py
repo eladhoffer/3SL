@@ -4,7 +4,7 @@ from datasets import concatenate_datasets, load_dataset
 
 class PreprocessWikiBooks(object):
     def __init__(self, tokenizer, tokenizer_args={}, field="text",
-                 break_mode="complete_doc", remove_sep=True, remove_cls=True, block_size=512) -> None:
+                 break_mode="complete_doc", remove_sep=False, remove_cls=False, block_size=512) -> None:
         super().__init__()
         self.tokenizer = tokenizer
         self.tokenizer_args = tokenizer_args

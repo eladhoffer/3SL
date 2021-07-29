@@ -12,7 +12,7 @@ optimizer:
       weight_decay: 0.01
       step_lambda:
         _target_: src.optim.scheduler.linear_warmup_and_decay
-        lr: 1e-3
+        lr: 5e-4
         warmup_steps: 4000 
         total_steps: ${trainer.max_steps}
 model_type: fairseq        

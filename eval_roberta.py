@@ -4,9 +4,9 @@ from transformers import pipeline, AutoTokenizer
 import torch
 from transformers import RobertaConfig, RobertaForMaskedLM
 
-c = torch.load('./results/roberta_base2/checkpoints/last.ckpt', map_location='cpu')
+c = torch.load('./results/roberta_base/checkpoints/last.ckpt', map_location='cpu')
 model = RobertaForMaskedLM(RobertaConfig(vocab_size=50265))
-state_dict = {name.replace('model.', '').replace('lm_head.lm_head', 'lm_head'): weight
+state_dict = {name.replace('model.', ''): weight
               for name, weight in c['state_dict'].items()}
 model.load_state_dict(state_dict)
 

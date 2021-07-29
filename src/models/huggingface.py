@@ -19,9 +19,9 @@ class OptimizerRobertaLMHead(RobertaLMHead):
 
 
 class RobertaForMaskedLM(transformers.RobertaForMaskedLM):
-    def __init__(self, config, shared_embedding_weights=False):
+    def __init__(self, config):
         super().__init__(config)
         self.lm_head = OptimizerRobertaLMHead(config)
-        if shared_embedding_weights:
+        if config.tie_word_embeddings:
             # share word embedding with classifier weights
-            self.lm_head.decoder.weight = self.roberta.embeddings.word_embeddings
+            self.lm_head.decoder.weight = self.roberta.embeddings.word_embeddings.weight

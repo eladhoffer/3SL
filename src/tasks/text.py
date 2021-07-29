@@ -16,6 +16,7 @@ class MaskedLanguageModelTask(ClassificationTask):
                  **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.model_type = model_type
+        # self.automatic_optimization = False
 
     def step(self, batch, model=None):
         if model is None:
@@ -24,7 +25,6 @@ class MaskedLanguageModelTask(ClassificationTask):
         num_tokens = masked_tokens.int().sum()
         y = batch['labels'][masked_tokens]
         lengths = batch['attention_mask'].int().sum(-1)
-
         if self.model_type == "fairseq":
             x = {
                 'src_tokens': batch['input_ids'],
@@ -38,13 +38,13 @@ class MaskedLanguageModelTask(ClassificationTask):
                 and hasattr(model.lm_head, 'set_masked_tokens')
             if optimized_model:
                 model.lm_head.set_masked_tokens(masked_tokens)
-            y_hat = model(**x)['logits']
-            if not optimized_model:
-                y_hat = y_hat[masked_tokens, :]
+                y_hat = model(**x)['logits']
+            else:
+                y_hat = model(**x)['logits'][masked_tokens, :]
 
-        return {'loss': self.loss(y_hat, y, reduction='sum'),
+        return {'loss': self.loss(y_hat, y),
                 'num_tokens': num_tokens,
-                'length': lengths.mean()}
+                'length': lengths.float().mean()}
 
     def loss(self, output, target, reduction='mean'):
         output = F.log_softmax(output, dim=-1, dtype=torch.float)
@@ -56,22 +56,29 @@ class MaskedLanguageModelTask(ClassificationTask):
         kwargs.setdefault('prog_bar', True)
         return super().log_lr(**kwargs)
 
+    def reduce_output(self, output):
+        num_tokens = output['num_tokens'].sum()
+        return {'loss': output['loss'].sum() / num_tokens.float(),
+                'num_tokens': num_tokens,
+                'length': output['length'].mean()}
+
     def log_metrics(self, output, phase='train', **kwargs):
         with torch.no_grad():
             loss = output['loss']
-            num_tokens = output['num_tokens']
-            length = output['length'].mean()
-            avg_loss = (loss / num_tokens) / math.log(2)
+            nll = loss / math.log(2)
             self.log_dict({
-                f'loss/{phase}': avg_loss,
-                f'ppl/{phase}': 2. ** avg_loss,
-                f'num_tokens/{phase}': num_tokens,
-                f'length/{phase}': length},
+                f'loss/{phase}': loss,
+                f'nll/{phase}': nll,
+                f'ppl/{phase}': 2. ** nll,
+                f'num_tokens/{phase}': output['num_tokens'],
+                f'length/{phase}': output['length']},
                 **kwargs)
 
     def training_step(self, batch, batch_idx):
         output = self.step(batch)
         self.log_lr(on_step=True)
+        self.log_metrics(output, phase='train',
+                         prog_bar=True, on_step=True)
         if self.use_sam:
             eps_w = self.sam_step(output['loss'])
             loss_w_sam = self.step(batch)['loss']
@@ -81,32 +88,18 @@ class MaskedLanguageModelTask(ClassificationTask):
         return output
 
     def training_step_end(self, output):
-        output['loss'] = output['loss'].sum()
-        output['num_tokens'] = output['num_tokens'].sum()
-        self.log_metrics(output, phase='train',
-                         prog_bar=True, on_step=True)
         self.update_ema()
         return output
 
-    def evaluation_step(self, batch, batch_idx):
+    def evaluation_step(self, batch, batch_idx, phase='val'):
         model = getattr(self, '_model_ema', self.model)
         model.eval()
-        return self.step(batch, model=model)
+        output = self.step(batch, model=model)
+        self.log_metrics(output, phase=phase)
+        return output
 
     def validation_step(self, batch, batch_idx):
-        return self.evaluation_step(batch, batch_idx)
-
-    def validation_step_end(self, output):
-        output['loss'] = output['loss'].sum()
-        output['num_tokens'] = output['num_tokens'].sum()
-        self.log_metrics(output, phase='val')
-        return output
+        return self.evaluation_step(batch, batch_idx, phase='val')
 
     def test_step(self, batch, batch_idx):
-        return self.evaluation_step(batch, batch_idx)
-
-    def test_step_end(self, output):
-        output['loss'] = output['loss'].sum()
-        output['num_tokens'] = output['num_tokens'].sum()
-        self.log_metrics(output, phase='val')
-        return output
+        return self.evaluation_step(batch, batch_idx, phase='test')

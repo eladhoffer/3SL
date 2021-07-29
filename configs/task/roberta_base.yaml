@@ -4,6 +4,7 @@ model:
   config:
     _target_: transformers.RobertaConfig
     vocab_size: 50265
+    tie_word_embeddings: true
 optimizer:
   _target_: src.optim.OptimRegime
   regime:
@@ -14,7 +15,7 @@ optimizer:
       weight_decay: 0.01
       step_lambda:
         _target_: src.optim.scheduler.linear_warmup_and_decay
-        lr: 1e-3
-        init_lr: 1e-5
-        warmup_steps: 4000 
+        lr: 5e-4
+        init_lr: 0.0
+        warmup_steps: 8000 
         total_steps: ${trainer.max_steps}
