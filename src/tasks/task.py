@@ -37,27 +37,17 @@ class Task(pl.LightningModule):
         self.save_hyperparameters()
 
     def configure_optimizers(self):
-        if 'OptimRegime' in self.optimizer_config.get('_target_', None):
+        optimizer_class = self.optimizer_config.get('_target_', None)
+        assert optimizer_class is not None, 'optimizer class is not defined'
+        if 'OptimRegime' in optimizer_class:
             self.optimizer_regime = instantiate(self.optimizer_config,
                                                 model=self.model, _convert_="all")
             return self.optimizer_regime.optimizer
-        else:  # regular optimizer
-            optimizer = self.optimizer_config.get('optimizer', self.optimizer_config)
-            lr_scheduler = self.optimizer_config.get('lr_scheduler', None)
-            regularizer = self.optimizer_config.get('regularizer', None)
-            if regularizer is not None:
-                self.regularizer = instantiate(regularizer, model=self.model)
-            optimizer = instantiate(optimizer,
-                                    params=self.model.parameters(), _convert_="all")
-            if lr_scheduler is None:
-                return optimizer
-            else:
-                lr_scheduler['scheduler'] = instantiate(lr_scheduler['scheduler'],
-                                                        optimizer=optimizer, _convert_="all")
-                return {
-                    'optimizer': optimizer,
-                    'lr_scheduler': lr_scheduler
-                }
+        elif 'OptimConfig' in optimizer_class:  # regular optimizer
+            self.optimizer_config = instantiate(self.optimizer_config, model=self.model,
+                                                _convert_="all", _recursive_=False)
+            self.regularizer = self.optimizer_config.regularizer
+            return self.optimizer_config.config_dict()
 
     def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
         if self.optimizer_regime is not None:
@@ -90,6 +80,11 @@ class Task(pl.LightningModule):
     def log_lr(self, **kwargs):
         if self.optimizer_regime is not None:
             self.log('lr', self.optimizer_regime.get_lr()[0], **kwargs)
+        lr_scheduler = self.lr_schedulers()
+        if isinstance(lr_scheduler, (list, tuple)):
+            lr_scheduler = lr_scheduler[0]
+        if lr_scheduler is not None:
+            self.log('lr', lr_scheduler.get_last_lr()[0], **kwargs)
 
     def create_ema(self, device=None):
         self._model_ema = deepcopy(self.model)

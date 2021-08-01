@@ -56,12 +56,6 @@ class MaskedLanguageModelTask(ClassificationTask):
         kwargs.setdefault('prog_bar', True)
         return super().log_lr(**kwargs)
 
-    def reduce_output(self, output):
-        num_tokens = output['num_tokens'].sum()
-        return {'loss': output['loss'].sum() / num_tokens.float(),
-                'num_tokens': num_tokens,
-                'length': output['length'].mean()}
-
     def log_metrics(self, output, phase='train', **kwargs):
         with torch.no_grad():
             loss = output['loss']
@@ -75,6 +69,7 @@ class MaskedLanguageModelTask(ClassificationTask):
                 **kwargs)
 
     def training_step(self, batch, batch_idx):
+        self.model.train()
         output = self.step(batch)
         self.log_lr(on_step=True)
         self.log_metrics(output, phase='train',
