@@ -1,0 +1,21 @@
+_target_: src.tasks.adversarial.AdversarialTransformTask
+model:
+  _target_: src.models.adversarial.AdversarialMaskTransform
+  num_samples: 32
+  output_size: [3,224,224]
+agnostic_model:
+  _target_: torchvision.models.resnet50
+  pretrained: True
+attacked_model:
+  _target_: torchvision.models.resnet18
+  pretrained: True
+optimizer:
+  _target_: src.optim.OptimConfig.instantiate
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 1e-3
+  lr_scheduler:
+    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    T_max: ${trainer.max_steps}
+  interval: step
+mu: 1e-3  

@@ -1,0 +1,23 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=resnet50_imagenet.yaml
+
+defaults:
+  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
+  - override /task: adversarial_transform.yaml
+  - override /data: single_batch.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+trainer:
+  max_steps: 1000
+  max_epochs: ${trainer.max_steps}
+  log_every_n_steps: 10
+
+callbacks:
+  model_checkpoint:
+    monitor: "loss/loss" 
