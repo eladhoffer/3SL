@@ -67,7 +67,7 @@ class AdversarialTransformTask(Task):
                 'accuracy/agnostic-T(x)': agnostic_Tx_accuracy,
                 'accuracy/attacked-T(x)': attacked_Tx_accuracy}
 
-    def log_image(self, x, name='x', normalize=False, scale_each=False, denormalize_imagenet=True):
+    def log_image(self, x, name='x', normalize=False, scale_each=False, denormalize_imagenet=False):
         if self.global_step % 100 == 0:
             mean = _imagenet_stats['mean'].to(x.device).view(1, -1, 1, 1)
             std = _imagenet_stats['std'].to(x.device).view(1, -1, 1, 1)
@@ -90,21 +90,23 @@ class AdversarialTransformTask(Task):
         attacked_outputs = (self.attacked_model(T_x), out_attacked_x)
         metrics = self.measure(agnostic_outputs, attacked_outputs, target=y)
 
-        self.log_image(x, f'images-{phase}/x')
-        self.log_image(T_x, f'images-{phase}/T(x)')
+        self.log_image(x, f'images-{phase}/x', denormalize_imagenet=True)
+        self.log_image(T_x, f'images-{phase}/T(x)', denormalize_imagenet=True)
         for k, v in transform_output.items():
-            self.log_image(v, f'images-{phase}/{k}',
-                           normalize=True, denormalize_imagenet=False)
+            self.log_image(v, f'images-{phase}/{k}', normalize=True)
         metrics['diff/image'] = (x - T_x.detach()).pow(2).mean()
-        self.log_dict({f'{phase}-{k}': v for k, v in metrics.items()},
-                      prog_bar=True, on_epoch=True, on_step=True)
-        return metrics['loss/loss']
+        return metrics
 
     def training_step(self, batch, batch_idx):
         self.model.train()
         self.log_lr()
-        return self.step(batch, batch_idx)
+        metrics = self.step(batch, batch_idx)
+        self.log_dict({f'train-{k}': v for k, v in metrics.items()},
+                      prog_bar=True, on_epoch=True, on_step=True)
+        return metrics['loss/loss']
 
     def validation_step(self, batch, batch_idx):
         self.model.eval()
-        return self.step(batch, batch_idx, phase='val')
+        metrics = self.step(batch, batch_idx, phase='val')
+        self.log_dict({f'val-{k}': v for k, v in metrics.items()})
+        return metrics['loss/loss']

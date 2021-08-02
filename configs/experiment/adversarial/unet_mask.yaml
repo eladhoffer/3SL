@@ -55,6 +55,7 @@ task:
     interval: step
   mu: 1e-5
   normalize_logits: true
+  transform_mode: mask
 
 callbacks:
   model_checkpoint:
