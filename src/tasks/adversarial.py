@@ -91,7 +91,7 @@ class AdversarialTransformTask(Task):
         metrics = self.measure(agnostic_outputs, attacked_outputs, target=y)
 
         self.log_image(x, f'images-{phase}/x')
-        self.log_image(T_x, 'images-{phase}/T(x)')
+        self.log_image(T_x, f'images-{phase}/T(x)')
         for k, v in transform_output.items():
             self.log_image(v, f'images-{phase}/{k}',
                            normalize=True, denormalize_imagenet=False)
