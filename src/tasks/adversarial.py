@@ -12,12 +12,13 @@ def normalize(x):
 
 
 class AdversarialTransformTask(Task):
-    def __init__(self, model, optimizer, agnostic_model, attacked_model,
+    def __init__(self, model, optimizer, agnostic_model, attacked_model, transform_mode=None,
                  mu=1e-3, mu_max=100, normalize_logits=False, jit_eval=False, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.mu = mu
         self.mu_max = mu_max
         self.normalize_logits = normalize_logits
+        self.transform_mode = transform_mode
 
         def _eval_model(model_def, jit=False):
             model = instantiate(model_def)
@@ -32,6 +33,15 @@ class AdversarialTransformTask(Task):
 
     def output_similarity(self, output, target):
         return F.mse_loss(output, target)
+
+    def transform(self, x):
+        out = {'T(x)': self.model(x).view_as(x)}
+        if self.transform_mode == 'mask':
+            out['mask'] = out['T(x)'].sigmoid()
+            out['T(x)'] = out['mask'] * x
+        elif self.transform_mode == 'add':
+            out['T(x)'] = out['T(x)'] + x
+        return out
 
     def measure(self, agnostic_outputs, attacked_outputs, target):
         if self.normalize_logits:
@@ -65,26 +75,36 @@ class AdversarialTransformTask(Task):
             grid = torchvision.utils.make_grid(x, normalize=normalize, scale_each=scale_each)
             for exp in self.logger.experiment:
                 if isinstance(exp, torch.utils.tensorboard.writer.SummaryWriter):
-                    exp.add_image(f'images/{name}', grid, self.global_step)
+                    exp.add_image(name, grid, self.global_step)
 
-    def training_step(self, batch, batch_idx):
+    def step(self, batch, batch_idx, phase='train'):
         x, y = batch
         self.attacked_model.eval()
         self.agnostic_model.eval()
-        self.model.train()
         with torch.no_grad():
             out_attacked_x = self.attacked_model(x)
             out_agnostic_x = self.agnostic_model(x)
-        T_x = self.model(x)
+        transform_output = self.transform(x)
+        T_x = transform_output.pop('T(x)')
         agnostic_outputs = (self.agnostic_model(T_x), out_agnostic_x)
         attacked_outputs = (self.attacked_model(T_x), out_attacked_x)
         metrics = self.measure(agnostic_outputs, attacked_outputs, target=y)
-        image_diff = x - T_x
-        with torch.no_grad():
-            metrics['diff/image'] = image_diff.pow(2).mean()
-            self.log_lr()
-            self.log_image(x)
-            self.log_image(x, 'T(x)')
-            self.log_image(image_diff, 'x-T(x)', normalize=True, denormalize_imagenet=False)
-            self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=True)
+
+        self.log_image(x, f'images-{phase}/x')
+        self.log_image(T_x, 'images-{phase}/T(x)')
+        for k, v in transform_output.items():
+            self.log_image(v, f'images-{phase}/{k}',
+                           normalize=True, denormalize_imagenet=False)
+        metrics['diff/image'] = (x - T_x.detach()).pow(2).mean()
+        self.log_dict({f'{phase}-{k}': v for k, v in metrics.items()},
+                      prog_bar=True, on_epoch=True, on_step=True)
         return metrics['loss/loss']
+
+    def training_step(self, batch, batch_idx):
+        self.model.train()
+        self.log_lr()
+        return self.step(batch, batch_idx)
+
+    def validation_step(self, batch, batch_idx):
+        self.model.eval()
+        return self.step(batch, batch_idx, phase='val')
