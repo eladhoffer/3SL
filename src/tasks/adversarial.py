@@ -7,12 +7,17 @@ import torchvision
 from src.data.transforms.utils import _imagenet_stats
 
 
+def normalize(x):
+    return x / x.norm(p=2, dim=-1, keepdim=True)
+
+
 class AdversarialTransformTask(Task):
     def __init__(self, model, optimizer, agnostic_model, attacked_model,
-                 mu=1e-3, mu_max=100, jit_eval=False, **kwargs):
+                 mu=1e-3, mu_max=100, normalize_logits=False, jit_eval=False, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.mu = mu
         self.mu_max = mu_max
+        self.normalize_logits = normalize_logits
 
         def _eval_model(model_def, jit=False):
             model = instantiate(model_def)
@@ -29,6 +34,9 @@ class AdversarialTransformTask(Task):
         return F.mse_loss(output, target)
 
     def measure(self, agnostic_outputs, attacked_outputs, target):
+        if self.normalize_logits:
+            agnostic_outputs = [normalize(x) for x in agnostic_outputs]
+            attacked_outputs = [normalize(x) for x in attacked_outputs]
         agnostic_diff = F.mse_loss(*agnostic_outputs)
         attacked_diff = F.mse_loss(*attacked_outputs)
         agnostic_loss = agnostic_diff.clamp(min=self.mu)
@@ -78,6 +86,5 @@ class AdversarialTransformTask(Task):
             self.log_image(x)
             self.log_image(x, 'T(x)')
             self.log_image(image_diff, 'x-T(x)', normalize=True, denormalize_imagenet=False)
-            self.log_dict(metrics, prog_bar=True, on_epoch=False, on_step=True)
+            self.log_dict(metrics, prog_bar=True, on_epoch=True, on_step=True)
         return metrics['loss/loss']
-
