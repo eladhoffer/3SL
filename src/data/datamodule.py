@@ -33,8 +33,11 @@ class DataConfig:
                 dataset = transform(dataset)
             return dataset
 
-        return {key: DataConfig._extract_datasets(value, **kwargs)
-                for key, value in config.items() if value is not None}
+        datasets = {key: DataConfig._extract_datasets(value, **kwargs)
+                    for key, value in config.items() if value is not None}
+        if len(datasets) == 0:
+            return None
+        return datasets
 
     @staticmethod
     def _extract_loaders(config, **kwargs):
@@ -43,6 +46,8 @@ class DataConfig:
         loader = config.get('loader', None)
         if loader is not None:
             dataset = DataConfig._extract_datasets(config, **kwargs)
+            if dataset is None:
+                return None
             return DataLoader(dataset, **loader)
         return {key: DataConfig._extract_loaders(value, **kwargs)
                 for key, value in config.items() if value is not None}

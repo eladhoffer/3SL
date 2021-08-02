@@ -13,6 +13,11 @@ defaults:
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
+task:
+  model:
+    num_samples: 32
+    output_size: [3,224,224]
+    
 trainer:
   max_steps: 1000
   max_epochs: ${trainer.max_steps}

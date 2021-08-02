@@ -1,0 +1,76 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=resnet50_imagenet.yaml
+
+defaults:
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /task: adversarial_transform.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+trainer:
+  max_steps: 39100
+  max_epochs: ${trainer.max_steps}
+  log_every_n_steps: 10
+  gpus: 4
+  benchmark: false
+
+task:
+  _target_: src.tasks.adversarial.AdversarialTransformTask
+  model:
+    _target_: src.models.adversarial.AdversarialUnetMaskTransform
+  agnostic_model:
+    _target_: torchvision.models.resnet50
+    pretrained: True
+  attacked_model:
+    _target_: torchvision.models.resnet18
+    pretrained: True
+  optimizer:
+    _target_: src.optim.OptimConfig.instantiate
+    optimizer:
+      _target_: torch.optim.Adam
+      lr: 1e-3
+    lr_scheduler:
+      _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+      T_max: ${trainer.max_steps}
+    interval: step
+  mu: 1e-3  
+
+data:
+  _target_: src.data.DataModule
+  normalize:
+    _target_: src.data.transforms.Normalize
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225] 
+  train:
+    dataset:
+      name: imagenet
+      split: eval
+      path: ${data_dir}
+      transform:
+        _target_: src.data.transforms.Compose
+        transforms:
+          - _target_: src.data.transforms.Resize
+            size: 256
+          - _target_: src.data.transforms.CenterCrop
+            size: 224        
+          - _target_: src.data.transforms.ToTensor
+          - ${data.normalize}
+    loader:
+      batch_size: 32
+      shuffle: true
+      drop_last: false
+      num_workers: 8
+      pin_memory: true 
+  val:
+    dataset: none
+    loader: none
+
+  
+callbacks:
+  model_checkpoint:
+    monitor: "loss/loss" 

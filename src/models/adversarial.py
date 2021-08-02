@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from math import prod
+import segmentation_models_pytorch as smp
 
 
 class AdversarialMaskTransform(nn.Module):
@@ -18,6 +19,18 @@ class AdversarialMaskTransform(nn.Module):
             mask = self.embedding(idx)
         mask = mask.sigmoid()
         return x * mask.view_as(x)
+
+
+class AdversarialUnetMaskTransform(smp.Unet):
+    def __init__(self, encoder_name="resnet18", in_channels=3, classes=3, **kwargs):
+        super().__init__(encoder_name=encoder_name,
+                         in_channels=in_channels,
+                         classes=classes, **kwargs)
+
+    def forward(self, x):
+        mask = super().forward(x)
+        mask = mask.sigmoid()
+        return x * mask
 
 
 if __name__ == '__main__':
