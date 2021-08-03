@@ -5,6 +5,7 @@ import torch
 from hydra.utils import instantiate
 import torchvision
 from src.data.transforms.utils import _imagenet_stats
+from src.utils_pt.misc import torch_dtypes
 
 
 def normalize(x):
@@ -12,24 +13,28 @@ def normalize(x):
 
 
 class AdversarialTransformTask(Task):
-    def __init__(self, model, optimizer, agnostic_model, attacked_model, transform_mode=None,
-                 mu=1e-3, mu_max=100, normalize_logits=False, jit_eval=False, **kwargs):
+    def __init__(self, model, optimizer, agnostic_model, attacked_model, transform_mode=None, criterion='mse',
+                 mu=0.0, mu_max=float('inf'), normalize_logits=False, jit_eval=False,
+                 agnostic_dtype=None, attacked_dtype=None, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.mu = mu
         self.mu_max = mu_max
+        self.criterion = criterion
         self.normalize_logits = normalize_logits
         self.transform_mode = transform_mode
+        self.agnostic_dtype = torch_dtypes.get(agnostic_dtype, None)
+        self.attacked_dtype = torch_dtypes.get(attacked_dtype, None)
 
-        def _eval_model(model_def, jit=False):
-            model = instantiate(model_def)
+        def _eval_model(model_def, dtype=torch.float, jit=False):
+            model = instantiate(model_def).to(dtype=dtype)
             model.eval()
             for p in model.parameters():
                 p.requires_grad_(False)
             if jit:
                 model = torch.jit.script(model)
             return model
-        self.attacked_model = _eval_model(attacked_model, jit_eval)
-        self.agnostic_model = _eval_model(agnostic_model, jit_eval)
+        self.attacked_model = _eval_model(attacked_model, dtype=self.attacked_dtype, jit=jit_eval)
+        self.agnostic_model = _eval_model(agnostic_model, dtype=self.agnostic_dtype, jit=jit_eval)
 
     def output_similarity(self, output, target):
         return F.mse_loss(output, target)
@@ -43,29 +48,49 @@ class AdversarialTransformTask(Task):
             out['T(x)'] = out['T(x)'] + x
         return out
 
+    def mse_loss(self, agnostic_outputs, attacked_outputs):
+        agnostic_diff = F.mse_loss(*agnostic_outputs)
+        attacked_diff = F.mse_loss(*attacked_outputs)
+        agnostic_loss = agnostic_diff.clamp(min=self.mu)
+        attacked_loss = 1.0 - attacked_diff.clamp(max=self.mu_max)
+        return {'loss/loss': agnostic_loss + attacked_loss,
+                'loss/agnostic': agnostic_loss,
+                'loss/attacked': attacked_loss,
+                'diff/agnostic': agnostic_diff,
+                'diff/attacked': attacked_diff}
+
+    def kl_loss(self, agnostic_outputs, attacked_outputs):
+        def _kl(x, y):
+            x = x.log_softmax(-1)
+            y = y.log_softmax(-1)
+            return F.kl_div(x, y, log_target=True, reduction='batchmean')
+
+        agnostic_loss = _kl(*agnostic_outputs).clamp(min=self.mu)
+        attacked_loss = -_kl(*attacked_outputs).clamp(max=self.mu_max)
+        return {'loss/loss': agnostic_loss + attacked_loss,
+                'loss/agnostic': agnostic_loss,
+                'loss/attacked': attacked_loss}
+
     def measure(self, agnostic_outputs, attacked_outputs, target):
         if self.normalize_logits:
             agnostic_outputs = [normalize(x) for x in agnostic_outputs]
             attacked_outputs = [normalize(x) for x in attacked_outputs]
-        agnostic_diff = F.mse_loss(*agnostic_outputs)
-        attacked_diff = F.mse_loss(*attacked_outputs)
-        agnostic_loss = agnostic_diff.clamp(min=self.mu)
-        attacked_loss = -attacked_diff.clamp(max=self.mu_max)
+        if self.criterion == 'mse':
+            outputs = self.mse_loss(agnostic_outputs, attacked_outputs)
+        elif self.criterion == 'kl':
+            outputs = self.kl_loss(agnostic_outputs, attacked_outputs)
         with torch.no_grad():
             agnostic_accuracy = FM.accuracy(agnostic_outputs[1].softmax(-1), target)
             agnostic_Tx_accuracy = FM.accuracy(agnostic_outputs[0].softmax(-1), target)
             attacked_accuracy = FM.accuracy(attacked_outputs[1].softmax(-1), target)
             attacked_Tx_accuracy = FM.accuracy(attacked_outputs[0].softmax(-1), target)
 
-        return {'loss/loss': agnostic_loss + attacked_loss,
-                'loss/agnostic': agnostic_loss,
-                'loss/attacked': attacked_loss,
-                'diff/agnostic': agnostic_diff,
-                'diff/attacked': attacked_diff,
-                'accuracy/agnostic': agnostic_accuracy,
-                'accuracy/attacked': attacked_accuracy,
-                'accuracy/agnostic-T(x)': agnostic_Tx_accuracy,
-                'accuracy/attacked-T(x)': attacked_Tx_accuracy}
+        outputs.update({
+            'accuracy/agnostic': agnostic_accuracy,
+            'accuracy/attacked': attacked_accuracy,
+            'accuracy/agnostic-T(x)': agnostic_Tx_accuracy,
+            'accuracy/attacked-T(x)': attacked_Tx_accuracy})
+        return outputs
 
     def log_image(self, x, name='x', normalize=False, scale_each=False, denormalize_imagenet=False):
         if self.global_step % 100 == 0:
@@ -82,12 +107,12 @@ class AdversarialTransformTask(Task):
         self.attacked_model.eval()
         self.agnostic_model.eval()
         with torch.no_grad():
-            out_attacked_x = self.attacked_model(x)
-            out_agnostic_x = self.agnostic_model(x)
+            out_attacked_x = self.attacked_model(x.to(dtype=self.attacked_dtype))
+            out_agnostic_x = self.agnostic_model(x.to(dtype=self.agnostic_dtype))
         transform_output = self.transform(x)
         T_x = transform_output.pop('T(x)')
-        agnostic_outputs = (self.agnostic_model(T_x), out_agnostic_x)
-        attacked_outputs = (self.attacked_model(T_x), out_attacked_x)
+        agnostic_outputs = (self.agnostic_model(T_x.to(dtype=self.attacked_dtype)), out_agnostic_x)
+        attacked_outputs = (self.attacked_model(T_x.to(dtype=self.agnostic_dtype)), out_attacked_x)
         metrics = self.measure(agnostic_outputs, attacked_outputs, target=y)
 
         self.log_image(x, f'images-{phase}/x', denormalize_imagenet=True)

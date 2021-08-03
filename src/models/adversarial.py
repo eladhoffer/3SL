@@ -21,16 +21,13 @@ class AdversarialMaskTransform(nn.Module):
         return x * mask.view_as(x)
 
 
-class AdversarialUnetMaskTransform(smp.Unet):
-    def __init__(self, encoder_name="resnet18", in_channels=3, classes=3, **kwargs):
+class AdversarialUnetTransform(smp.Unet):
+    def __init__(self, encoder_name="resnet18", in_channels=3, classes=3, output_init_bias=1.,
+                 **kwargs):
         super().__init__(encoder_name=encoder_name,
                          in_channels=in_channels,
                          classes=classes, **kwargs)
-
-    def forward(self, x):
-        mask = super().forward(x)
-        mask = mask.sigmoid()
-        return x * mask
+        self.segmentation_head[0].bias.data.fill_(output_init_bias)
 
 
 if __name__ == '__main__':

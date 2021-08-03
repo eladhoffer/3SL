@@ -34,10 +34,10 @@ data:
 task:
   _target_: src.tasks.adversarial.AdversarialTransformTask
   model:
-    _target_: segmentation_models_pytorch.Unet
+    _target_: src.models.adversarial.AdversarialUnetTransform
     encoder_name: resnet18
-    in_channels: 3
-    classes: 3
+    encoder_weights: imagenet
+    output_init_bias: 6.0
   agnostic_model:
     _target_: torchvision.models.resnet50
     pretrained: True
@@ -53,10 +53,11 @@ task:
       _target_: torch.optim.lr_scheduler.CosineAnnealingLR
       T_max: ${trainer.max_steps}
     interval: step
-  mu: 1e-5
-  normalize_logits: true
   transform_mode: mask
+  criterion: kl
+  mu: 0.1
+  mu_max: 8.0
 
 callbacks:
   model_checkpoint:
-    monitor: "loss/loss"
+    monitor: "val-loss/loss"
