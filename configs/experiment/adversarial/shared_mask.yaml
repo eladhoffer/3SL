@@ -34,11 +34,8 @@ data:
 task:
   _target_: src.tasks.adversarial.AdversarialTransformTask
   model:
-    _target_: src.models.adversarial.AdversarialUnetTransform
-    encoder_name: resnet18
-    encoder_weights: imagenet
-    classes: 6
-    output_init_bias: 6.0
+    _target_: src.models.adversarial.AdversarialSharedMask
+    output_size: [3, 224, 224]
   agnostic_model:
     _target_: torchvision.models.resnet50
     pretrained: True
@@ -54,10 +51,11 @@ task:
       _target_: torch.optim.lr_scheduler.CosineAnnealingLR
       T_max: ${trainer.max_steps}
     interval: step
-  transform_mode: interpolate
   criterion: kl
   mu: 1e-3
   mu_max: 32.0
+  transform_mode: interpolate
+
 
 callbacks:
   model_checkpoint:

@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from math import prod
 import segmentation_models_pytorch as smp
+from torchvision import models
 
 
 class AdversarialMaskTransform(nn.Module):
@@ -28,6 +29,21 @@ class AdversarialUnetTransform(smp.Unet):
                          in_channels=in_channels,
                          classes=classes, **kwargs)
         self.segmentation_head[0].bias.data.fill_(output_init_bias)
+
+
+class AdversarialSharedMask(nn.Module):
+    def __init__(self, output_size):
+        super().__init__()
+        self.image = nn.Parameter(torch.full((1, *output_size), 4.0))
+        self.image_transform = nn.AdaptiveAvgPool2d(1)
+
+    def forward(self, x):
+        image = self.image
+        alpha = self.image_transform(x)
+        return {
+            "image": image,
+            "mask": alpha
+        }
 
 
 if __name__ == '__main__':
