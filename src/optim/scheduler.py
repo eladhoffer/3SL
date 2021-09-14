@@ -17,9 +17,11 @@ def linear_warmup_and_decay(lr, warmup_steps, total_steps, init_lr=0., return_di
 
 
 class LinearWarmUpDecay(LambdaLR):
-    def __init__(self, optimizer, lr, warmup_steps, total_steps, init_lr=0., last_epoch=-1, verbose=False):
+    def __init__(self, optimizer, lr, warmup_steps, total_steps, init_lr=0.,
+                 last_epoch=-1, verbose=False):
         lr_fn = linear_warmup_and_decay(lr=lr, warmup_steps=warmup_steps,
-                                        total_steps=total_steps, init_lr=init_lr, return_dict=False)
+                                        total_steps=total_steps, init_lr=init_lr,
+                                        return_dict=False)
         super().__init__(optimizer, lr_fn,
                          last_epoch=last_epoch, verbose=verbose)
 

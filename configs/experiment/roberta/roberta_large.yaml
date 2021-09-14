@@ -1,0 +1,83 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=roberta/roberta_large.yaml
+
+defaults:
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /task: roberta_base.yaml
+  - override /data: wikibooks.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+batch_size: 64
+resume: null
+
+task:
+  _target_: src.tasks.text.MaskedLanguageModelTask
+  model:
+    _target_: src.models.huggingface.RobertaForMaskedLM
+    config:
+      _target_: transformers.RobertaConfig
+      vocab_size: 50265
+      tie_word_embeddings: true
+      attention_probs_dropout_prob: 0.1
+      bos_token_id: 0
+      eos_token_id: 2
+      hidden_act: "gelu"
+      hidden_dropout_prob: 0.1
+      hidden_size: 1024
+      initializer_range: 0.02
+      intermediate_size: 4096
+      layer_norm_eps: 1e-05
+      max_position_embeddings: 130
+      model_type: "roberta"
+      num_attention_heads: 16
+      num_hidden_layers: 24
+      pad_token_id: 1
+      type_vocab_size: 1
+  optimizer:
+    _target_: src.optim.OptimConfig.instantiate
+    optimizer:
+      _target_: torch.optim.AdamW
+      betas:
+        - 0.9
+        - 0.98
+      eps: 1e-6
+      weight_decay: 0.01
+      lr: 0.0
+    lr_scheduler:
+      _target_: src.optim.scheduler.LinearWarmUpDecay
+      lr: 1e-4
+      init_lr: 0.0
+      warmup_steps: 10000
+      total_steps: ${trainer.max_steps}
+    interval: step
+
+trainer:
+  max_steps: 125000
+  max_epochs: ${trainer.max_steps}
+  gpus: 8
+  precision: 16
+  accumulate_grad_batches: 8
+  val_check_interval: 4000
+
+data:
+  train:
+    loader:
+      batch_size: 4
+      num_workers: 8
+      pin_memory: false
+  val:
+    loader:
+      batch_size: 4
+      num_workers: 8
+      pin_memory: false
+
+callbacks:
+  model_checkpoint:
+    monitor: "loss/val"

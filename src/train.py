@@ -53,6 +53,14 @@ def train(config: DictConfig) -> Optional[float]:
                 log.info(f"Instantiating callback <{cb_conf._target_}>")
                 callbacks.append(hydra.utils.instantiate(cb_conf))
 
+    # Init Lightning plugins
+    plugins: List = []
+    if "plugins" in config:
+        for _, plug_conf in config["plugins"].items():
+            if "_target_" in plug_conf:
+                log.info(f"Instantiating plugin <{plug_conf._target_}>")
+                plugins.append(hydra.utils.instantiate(plug_conf))
+
     # Init Lightning loggers
     logger: List[LightningLoggerBase] = []
     if "logger" in config:
@@ -64,7 +72,8 @@ def train(config: DictConfig) -> Optional[float]:
     # Init Lightning trainer
     log.info(f"Instantiating trainer <{config.trainer._target_}>")
     trainer: Trainer = hydra.utils.instantiate(
-        config.trainer, callbacks=callbacks, logger=logger, _convert_="partial"
+        config.trainer, callbacks=callbacks, 
+        logger=logger, _convert_="partial"
     )
 
     # Send some parameters from config to all lightning loggers

@@ -1,7 +1,7 @@
 from pytorch_lightning.metrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
-from .task import Task
+from src.tasks.task import Task
 import torch
 from hydra.utils import instantiate
 
