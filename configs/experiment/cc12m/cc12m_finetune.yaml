@@ -1,0 +1,55 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=fixmatch_cifar10
+defaults:
+  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
+  - override /data: imagenet.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+resume: null
+
+trainer:
+  min_epochs: 1
+  max_steps: 7812
+  max_epochs: ${trainer.max_steps}
+  benchmark: true
+  precision: 16
+
+data:
+  train:
+    loader:
+      batch_size: 64
+  val:
+    loader:
+      batch_size: 512
+
+task:
+  _target_: src.tasks.supervised.FinetuneTask
+  model:
+    _target_: src.models.resnet.resnet
+    dataset: imagenet
+    num_classes: 768
+    depth: 50
+  optimizer:
+    _target_: src.optim.OptimRegime
+    regime:
+      - epoch: 0
+        optimizer: Adam
+        lr: 1e-3
+        momentum: 0.9
+        lr_scheduler:
+          name: CosineAnnealingLR
+          time_frame: step
+          T_max: ${trainer.max_steps}
+          eta_min: 0
+  classifier:
+    _target_: torch.nn.Linear
+    in_features: 2048
+    out_features: 1000
+  checkpoint_path: /home/labuser/Pytorch/3SL/results/cc12m/cc12m_imagenet/checkpoints/last.ckpt

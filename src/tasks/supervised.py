@@ -10,26 +10,32 @@ class ClassificationTask(Task):
     def __init__(self, model, optimizer, label_smoothing=None, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.label_smoothing = label_smoothing
+        self.save_hyperparameters()
 
     def loss(self, output, target):
         if self.mixup:
             target = self.mixup.mix_target(target, output.size(-1))
         return cross_entropy(output, target, smooth_eps=self.label_smoothing)
 
+    def metrics(self, output, target):
+        acc = FM.accuracy(output.softmax(dim=-1), target)
+        return {'accuracy': acc}
+
     def training_step(self, batch, batch_idx):
         if isinstance(batch, dict):  # drop unlabled
             batch = batch['labeled']
         x, y = batch
+        self.train()
         if self.mixup:
             self.mixup.sample(x.size(0))
             x = self.mixup(x)
         y_hat = self.model(x)
         loss = self.loss(y_hat, y)
-        acc = FM.accuracy(y_hat.softmax(-1), y)
         self.log_lr(on_step=True)
-        self.log_dict({
-            'loss/train': loss,
-            'accuracy/train': acc}, prog_bar=True, on_epoch=True, on_step=True)
+        metrics = self.metrics(y_hat, y)
+        metrics['loss'] = loss
+        self.log_dict({f'{k}/train': v for k, v in metrics.items()},
+                      prog_bar=True, on_epoch=True, on_step=True)
         if self.use_sam:
             eps_w = self.sam_step(loss)
             loss_w_sam = self.loss(self.model(x), y)
@@ -43,9 +49,8 @@ class ClassificationTask(Task):
         model.eval()
         x, y = batch
         y_hat = model(x)
-        loss = self.loss(y_hat, y)
-        acc = FM.accuracy(y_hat.softmax(dim=-1), y)
-        metrics = {'accuracy': acc, 'loss': loss}
+        metrics = self.metrics(y_hat, y)
+        metrics['loss'] = self.loss(y_hat, y)
         return metrics
 
     def validation_step(self, batch, batch_idx):
@@ -92,3 +97,79 @@ class DistillationTask(ClassificationTask):
             target = self.teacher(x)
         dist_batch = (x, target)
         return super().training_step(dist_batch)
+
+
+class SupervisedEmbeddingTask(ClassificationTask):
+    def __init__(self, model, optimizer, criterion=None,
+                 normalize_target=None,
+                 class_embeddings=None, finetune_class_embedding=False, **kwargs):
+        super().__init__(model, optimizer, **kwargs)
+        self.criterion = instantiate(criterion)
+        self.model.criterion = self.criterion  # in case of parametrized loss
+        if normalize_target is not None:
+            self.model.normalize_target = instantiate(normalize_target)
+        else:
+            self.model.normalize_target = None
+        if class_embeddings is not None:
+            class_embeddings = torch.load(class_embeddings, map_location='cpu')
+            if finetune_class_embedding:
+                self.model.register_parameter('class_embeddings',
+                                              torch.nn.Parameter(class_embeddings))
+            else:
+                self.model.register_buffer('class_embeddings', class_embeddings)
+        self.save_hyperparameters()
+
+    def embed_target(self, target):
+        if target.dtype == torch.long:
+            target = self.model.class_embeddings.index_select(0, target)
+        if self.model.normalize_target is not None:
+            target = self.model.normalize_target(target)
+        return target
+
+    def loss(self, output, target):
+        target = self.embed_target(target)
+        if self.mixup:
+            target = self.mixup.mix_target(target, output.size(-1))
+        return self.criterion(output, target)
+
+    def metrics(self, output, target):
+        metric = {}
+        if target.dtype == torch.long:
+            target_embedding = self.embed_target(target)
+            pred = output.mm(target_embedding.t())
+            metric['accuracy'] = FM.accuracy(pred.softmax(dim=-1), target)
+
+        return metric
+
+
+class FrozenModule(torch.nn.Module):
+    def __init__(self, module):
+        super().__init__()
+        self.module = module
+        for p in self.module.parameters():
+            p.requires_grad_(False)
+
+    def forward(self, *args, **kwargs):
+        with torch.no_grad():
+            return self.module(*args, **kwargs)
+
+
+class FinetuneTask(ClassificationTask):
+    def __init__(self, model, optimizer, classifier, checkpoint_path,
+                 remove_layer='fc', finetune_all=True, **kwargs):
+        super().__init__(model, optimizer, **kwargs)
+        self.classifier = instantiate(classifier)
+        state_dict = torch.load(checkpoint_path)['state_dict']
+        self.load_state_dict(state_dict, strict=False)
+
+        if remove_layer is not None:
+            setattr(self.model, remove_layer, torch.nn.Identity())
+
+        self.model = torch.nn.Sequential(
+            self.model if finetune_all else FrozenModule(self.model),
+            self.classifier
+        )
+        # if load_all:
+        #     state_dict = torch.load(checkpoint_path)['state_dict']
+        #     self.load_state_dict(state_dict, strict=False)
+        self.save_hyperparameters()

@@ -201,7 +201,7 @@ class ResNet_cifar(ResNet):
     def __init__(self, num_classes=10, inplanes=16,
                  block=BasicBlock, depth=18, width=[16, 32, 64],
                  groups=[1, 1, 1], residual_block=None,
-                 dropout=None, mixup=False, pre_pool_bn=False):
+                 dropout=None, mixup=False, pre_pool_bn=False, **kwargs):
         super(ResNet_cifar, self).__init__()
         self.inplanes = inplanes
         n = int((depth - 2) / 6)
