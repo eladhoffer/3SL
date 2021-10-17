@@ -26,11 +26,11 @@ data:
   train:
     loader:
       batch_size: 128
-      num_workers: 2
+      num_workers: 0
   val:
     loader:
       batch_size: 128
-      num_workers: 2
+      num_workers: 0
 task:
   _target_: src.tasks.supervised.SupervisedEmbeddingTask
   model:

@@ -13,12 +13,18 @@ class CCSE(VisionDataset):
     def __init__(self, transform=None, target_transform=None,
                  sample_csv='/home/labuser/Datasets/cc12m/500K.csv',
                  image_dir='/home/labuser/Datasets/cc12m/training',
-                 embedding_dir='/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base'):
+                 embedding_dir='/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base',
+                 embedding_file=None):  # '/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base/all_embeddings.pt'):
         self.transform = transform
         self.target_transform = target_transform
         self.sample_csv = sample_csv
         self.image_dir = image_dir
         self.embedding_dir = embedding_dir
+        self.embedding_file = embedding_file
+        if self.embedding_file is not None and os.path.isfile(self.embedding_file):
+            self.embeddings = torch.load(embedding_file)
+        else:
+            self.embeddings = None
         self.samples_idxs = pd.read_csv(self.sample_csv, header=None)[0].tolist()
 
     def __len__(self) -> int:
@@ -28,7 +34,10 @@ class CCSE(VisionDataset):
         index = self.samples_idxs[i]
         image = Image.open(os.path.join(self.image_dir, f'{index:08d}.jpg'))
         image = image.convert('RGB')
-        embedding = torch.load(os.path.join(self.embedding_dir, f'{index:08d}.pt'))
+        if self.embeddings is None:
+            embedding = torch.load(os.path.join(self.embedding_dir, f'{index:08d}.pt'))
+        else:
+            embedding = self.embeddings[index]
         if self.transform is not None:
             image = self.transform(image)
         if self.target_transform is not None:

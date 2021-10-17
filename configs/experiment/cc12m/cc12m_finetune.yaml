@@ -3,7 +3,7 @@
 # to execute this experiment run:
 # python run.py experiment=fixmatch_cifar10
 defaults:
-  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
   - override /data: imagenet.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
@@ -16,15 +16,16 @@ resume: null
 
 trainer:
   min_epochs: 1
-  max_steps: 7812
+  max_steps: 25000
   max_epochs: ${trainer.max_steps}
   benchmark: true
   precision: 16
+  val_check_interval: 1000  
 
 data:
   train:
     loader:
-      batch_size: 64
+      batch_size: 256
   val:
     loader:
       batch_size: 512
@@ -40,8 +41,8 @@ task:
     _target_: src.optim.OptimRegime
     regime:
       - epoch: 0
-        optimizer: Adam
-        lr: 1e-3
+        optimizer: SGD
+        lr: 1e-1
         momentum: 0.9
         lr_scheduler:
           name: CosineAnnealingLR

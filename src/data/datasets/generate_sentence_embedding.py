@@ -79,10 +79,24 @@ def generate_sentence_embedding(sentences, model_name='sentence-transformers/all
 #                                  path='/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base',
 #                                  model_name='sentence-transformers/all-mpnet-base-v2',
 #                                  device='cuda:2', dtype=torch.half)
+
+
 cifar10_classes = ['airplane', 'automobile', 'bird',
                    'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 cifar10_embedding = generate_sentence_embedding(cifar10_classes,
                                                 model_name='sentence-transformers/all-mpnet-base-v2',
                                                 device='cuda:1', dtype=torch.half)
-print(cifar10_embedding)                                                
+print(cifar10_embedding)
 torch.save(cifar10_embedding.cpu(), 'cifar10_embedding.pt')
+
+
+# def concat_all_embeddings(embeddings_path, num=12423374, output='all_embeddings.pt'):
+#     embeddings = torch.zeros((num, 768), dtype=torch.float, device='cpu')
+#     for i in range(num):
+#         filename = os.path.join(embeddings_path, f'{i:08d}.pt')
+#         embeddings[i].copy_(torch.load(filename))
+#     torch.save(embeddings, output)
+
+
+# concat_all_embeddings('/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base',
+#                       output='/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base/all_embeddings.pt')
