@@ -7,14 +7,14 @@ from torchvision.transforms.transforms import RandomCrop
 from torchvision.datasets import VisionDataset, CIFAR10
 from torchvision.datasets.folder import is_image_file
 import os
-
+import numpy as np
 
 class CCSE(VisionDataset):
     def __init__(self, transform=None, target_transform=None,
                  sample_csv='/home/labuser/Datasets/cc12m/500K.csv',
                  image_dir='/home/labuser/Datasets/cc12m/training',
                  embedding_dir='/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base',
-                 embedding_file=None):  # '/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base/all_embeddings.pt'):
+                 embedding_file='/home/labuser/Datasets/cc12m/all_embeddings.npy'):
         self.transform = transform
         self.target_transform = target_transform
         self.sample_csv = sample_csv
@@ -22,7 +22,7 @@ class CCSE(VisionDataset):
         self.embedding_dir = embedding_dir
         self.embedding_file = embedding_file
         if self.embedding_file is not None and os.path.isfile(self.embedding_file):
-            self.embeddings = torch.load(embedding_file)
+            self.embeddings = np.load(embedding_file, mmap_mode='r')
         else:
             self.embeddings = None
         self.samples_idxs = pd.read_csv(self.sample_csv, header=None)[0].tolist()
@@ -37,7 +37,7 @@ class CCSE(VisionDataset):
         if self.embeddings is None:
             embedding = torch.load(os.path.join(self.embedding_dir, f'{index:08d}.pt'))
         else:
-            embedding = self.embeddings[index]
+            embedding = torch.from_numpy(self.embeddings[index])
         if self.transform is not None:
             image = self.transform(image)
         if self.target_transform is not None:

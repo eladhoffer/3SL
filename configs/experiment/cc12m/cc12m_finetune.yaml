@@ -16,11 +16,10 @@ resume: null
 
 trainer:
   min_epochs: 1
-  max_steps: 25000
+  max_steps: 200000
   max_epochs: ${trainer.max_steps}
   benchmark: true
   precision: 16
-  val_check_interval: 1000  
 
 data:
   train:

@@ -8,6 +8,7 @@ __pycache__/
 
 # Pytorch tensors
 *.pt
+*.npy
 
 # Distribution / packaging
 .Python
