@@ -3,19 +3,24 @@ normalize:
   _target_: src.data.transforms.Normalize
   mean: [0.485, 0.456, 0.406]
   std: [0.229, 0.224, 0.225]
+normalize_target:
+  _target_: src.data.transforms.NormalizeEmbeddings
+  mean_filename: /home/labuser/Datasets/cc12m/all_embeddings_mean.npy
+  std_filename: /home/labuser/Datasets/cc12m/all_embeddings_std.npy
 train:
   dataset:
-    _target_: src.data.datasets.cc12m.CCSE
-    sample_csv: /home/labuser/Datasets/cc12m/5M.csv
+    _target_: src.data.datasets.cc12m.CC5Ms
+    split: train
     transform:
       _target_: src.data.transforms.Compose
       transforms:
-        - _target_: src.data.transforms.Resize
+        - _target_: src.data.transforms.RandomHorizontalFlip
+        - _target_: src.data.transforms.RandomCrop
           size: 32
-        - _target_: src.data.transforms.CenterCrop
-          size: 32
+          padding: 4
         - _target_: src.data.transforms.ToTensor
         - ${data.normalize}
+    label_transform: ${data.normalize_target}
   loader:
     batch_size: ${batch_size}
     shuffle: true
@@ -24,8 +29,7 @@ train:
     pin_memory: true    
 val:
   dataset:
-    name: cifar10
-    path: ${data_dir}    
+    _target_: src.data.datasets.cc12m.CC5Ms
     split: eval
     transform:
       _target_: src.data.transforms.Compose
@@ -34,6 +38,7 @@ val:
           size: 32
         - _target_: src.data.transforms.ToTensor
         - ${data.normalize}
+    label_transform: ${data.normalize_target}
   loader:
     batch_size: ${eval_batch_size}
     shuffle: false

@@ -6,9 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
-# Pytorch tensors
+# saved tensors
 *.pt
 *.npy
+*.zip
 
 # Distribution / packaging
 .Python

@@ -3,11 +3,13 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
+import torchvision
 from torchvision.transforms.transforms import RandomCrop
 from torchvision.datasets import VisionDataset, CIFAR10
 from torchvision.datasets.folder import is_image_file
 import os
 import numpy as np
+
 
 class CCSE(VisionDataset):
     def __init__(self, transform=None, target_transform=None,
@@ -76,10 +78,43 @@ class CC12M(Dataset):
         return img, caption
 
 
-# transform = transforms.Compose([
-#     transforms.Resize(32),
-#     transforms.CenterCrop(32),
-#     transforms.ToTensor(),
-# ])
+class CC5Ms(Dataset):
+    def __init__(self, transform=None, label_transform=None,
+                 split='train',
+                 path='/home/labuser/Datasets/cc12m/',
+                 training_filenames=('cc12m_small_5M_images.npy', 'cc12m_small_5M_embeddings.npy'),
+                 eval_filenames=('cc12m_small_5K_images.npy', 'cc12m_small_5K_embeddings.npy')):
+        if split == 'train':
+            self.filenames = training_filenames
+        elif split == 'eval':
+            self.filenames = eval_filenames
+        self.data = np.load(os.path.join(path, self.filenames[0]), mmap_mode='r')
+        self.embeddings = np.load(os.path.join(path, self.filenames[1]), mmap_mode='r')
+        self.transform = transform
+        self.label_transform = label_transform
+        assert self.data.shape[0] == self.embeddings.shape[0]
 
-# # dset = CC12M(transform=transform)
+    def __len__(self):
+        return self.data.shape[0]
+
+    def __getitem__(self, index):
+        img = Image.fromarray(self.data[index])
+        embedding = torch.from_numpy(np.copy(self.embeddings[index]))
+        if self.transform is not None:
+            img = self.transform(img)
+        if self.label_transform is not None:
+            embedding = self.label_transform(embedding)
+        return img, embedding
+
+
+class NormalizeEmbeddings:
+    def __init__(self, mean_filename, std_filename, eps=1e-8) -> None:
+        self.mean = torch.from_numpy(np.load(mean_filename))
+        self.std = torch.from_numpy(np.load(std_filename))
+        self.eps = eps
+
+    def __call__(self, tensor):
+        return (tensor - self.mean) / self.std
+
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
