@@ -4,7 +4,7 @@
 # python run.py experiment=fixmatch_cifar10
 defaults:
   - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
-  - override /data: cifar10.yaml
+  - override /data: cifar100.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
 
@@ -34,7 +34,7 @@ task:
     _target_: src.models.resnet.ResNet_cifar
     num_classes: 768
     width: [160, 320, 640]
-    depth: 28
+    depth: 44
   optimizer:
     _target_: src.optim.OptimRegime
     regime:
@@ -50,5 +50,5 @@ task:
   classifier:
     _target_: torch.nn.Linear
     in_features: 640
-    out_features: 10
+    out_features: 100
   checkpoint_path: /home/labuser/Pytorch/3SL/results/cc12m/cc12m_small_mse/checkpoints/last.ckpt

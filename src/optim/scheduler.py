@@ -1,4 +1,4 @@
-from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
+from torch.optim.lr_scheduler import *
 
 
 def linear_warmup_and_decay(lr, warmup_steps, total_steps, init_lr=0., return_dict=True):
