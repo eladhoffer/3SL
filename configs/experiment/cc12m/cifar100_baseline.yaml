@@ -16,9 +16,10 @@ resume: null
 
 trainer:
   min_epochs: 1
-  max_steps: 7812
+  max_steps: 78125
   max_epochs: ${trainer.max_steps}
   benchmark: true
+  precision: 16
 
 data:
   train:
@@ -29,10 +30,10 @@ data:
       batch_size: 512
 
 task:
-  _target_: src.tasks.supervised.FinetuneTask
+  _target_: src.tasks.supervised.ClassificationTask
   model:
     _target_: src.models.resnet.resnet
-    num_classes: 768
+    dataset: cifar100
     width: [160, 320, 640]
     depth: 28
   optimizer:
@@ -40,15 +41,13 @@ task:
     regime:
       - epoch: 0
         optimizer: SGD
-        lr: 1e-1
+        lr: 0.1
         momentum: 0.9
+        regularizer:
+          name: "WeightDecay"
+          value: 5e-4
         lr_scheduler:
           name: CosineAnnealingLR
           time_frame: step
           T_max: ${trainer.max_steps}
           eta_min: 0
-  classifier:
-    _target_: torch.nn.Linear
-    in_features: 640
-    out_features: 100
-  checkpoint_path: /home/labuser/Pytorch/3SL/results/cc12m/cc12m_small_mse/checkpoints/last.ckpt

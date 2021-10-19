@@ -20,7 +20,7 @@ class Task(pl.LightningModule):
             self.model = torch.jit.script(self.model)
         self.optimizer_config = optimizer
         self.optimizer_regime = None
-        self.regularizer = None
+        self._regularizers = []
         self.ema_momentum = ema_momentum
         self.ema_bn_momentum = ema_bn_momentum or ema_momentum
         self.use_sam = use_sam
@@ -36,6 +36,15 @@ class Task(pl.LightningModule):
             self.mixup = None
         self.save_hyperparameters()
 
+    def regularizers(self):
+        for reg in self._regularizers:
+            yield reg
+
+    def configure_regularizers(self, regularizers, append=True):
+        if not append:
+            self._regularizers = []
+        self._regularizers.extend(regularizers)
+
     def configure_optimizers(self):
         optimizer_class = self.optimizer_config.get('_target_', None)
         assert optimizer_class is not None, 'optimizer class is not defined'
@@ -46,31 +55,31 @@ class Task(pl.LightningModule):
         elif 'OptimConfig' in optimizer_class:  # regular optimizer
             self.optimizer_config = instantiate(self.optimizer_config, model=self.model,
                                                 _convert_="all", _recursive_=False)
-            self.regularizer = self.optimizer_config.regularizer
-            return self.optimizer_config.config_dict()
+            self.configure_regularizers(self.optimizer_config.regularizers())
+            return self.optimizer_config.configuration()
 
     def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
         if self.optimizer_regime is not None:
             self.optimizer_regime.update(self.current_epoch, self.global_step + 1)
             self.optimizer_regime.pre_forward()
             self.optimizer_regime.pre_backward()
-        if self.regularizer is not None:
-            self.regularizer.pre_forward()
-            self.regularizer.pre_backward()
+        for regularizer in self.regularizers():
+            regularizer.pre_forward()
+            regularizer.pre_backward()
         return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
 
     def on_after_backward(self) -> None:
         if self.optimizer_regime is not None:
             self.optimizer_regime.pre_step()
-        if self.regularizer is not None:
-            self.regularizer.pre_step()
+        for regularizer in self.regularizers():
+            regularizer.pre_step()
         return super().on_after_backward()
 
     def on_before_zero_grad(self, optimizer) -> None:
         if self.optimizer_regime is not None:
             self.optimizer_regime.post_step()
-        if self.regularizer is not None:
-            self.regularizer.post_step()
+        for regularizer in self.regularizers():
+            regularizer.post_step()
         return super().on_before_zero_grad(optimizer)
 
     def training_step_end(self, losses):
