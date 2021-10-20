@@ -74,8 +74,9 @@ class OptimConfig(object):
         }
 
     def configuration(self):
-        config = {"optimizer": self.optimizer,
-                  "lr_scheduler": self.lr_dict()}
+        config = {"optimizer": self.optimizer}
+        if self.lr_scheduler is not None:
+            config["lr_scheduler"] = self.lr_dict()
         if self.optimizer_frequency is not None:
             config["frequency"] = self.optimizer_frequency
         return config

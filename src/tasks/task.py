@@ -95,7 +95,8 @@ class Task(pl.LightningModule):
             if not isinstance(lr_schedulers, (list, tuple)):
                 lr_schedulers = [lr_schedulers]
             for lr_scheduler in lr_schedulers:
-                lrs += lr_scheduler.get_last_lr()
+                if lr_scheduler is not None:
+                    lrs += lr_scheduler.get_last_lr()
         for idx, lr in enumerate(lrs):
             name = 'lr' if idx == 0 else f'lr_{idx}'
             self.log(name, lr, **kwargs)
