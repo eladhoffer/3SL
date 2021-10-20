@@ -37,12 +37,12 @@ class Task(pl.LightningModule):
         self.save_hyperparameters()
 
     def regularizers(self):
-        for reg in self._regularizers:
-            yield reg
+        return self._regularizers
 
     def configure_regularizers(self, regularizers, append=True):
         if not append:
             self._regularizers = []
+        regularizers = [reg for reg in regularizers if reg is not None]
         self._regularizers.extend(regularizers)
 
     def configure_optimizers(self):

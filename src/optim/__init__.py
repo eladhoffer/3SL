@@ -8,7 +8,8 @@ class OptimConfig(object):
     """
 
     def __init__(self, optimizer, lr_scheduler=None, regularizer=None, filter=None,
-                 interval='step', frequency=1, monitor=None, strict=True, name=None):
+                 interval='step', frequency=1, monitor=None, strict=True, name=None,
+                 optimizer_frequency=None):
         """
         :param optim_regime: Optimization regime.
         """
@@ -21,14 +22,23 @@ class OptimConfig(object):
         self.monitor = monitor
         self.strict = strict
         self.name = name
+        self.optimizer_frequency = optimizer_frequency
 
     @staticmethod
-    def instantiate(model, optimizer, lr_scheduler=None, regularizer=None, filter=None,
-                    interval='step', frequency=1, monitor=None, strict=True, name=None):
+    def instantiate(model, optimizer, lr_scheduler=None, regularizer=None,
+                    filter=None, optimizer_filters=None, interval='step', frequency=1,
+                    monitor=None, strict=True, name=None):
         if filter is not None:
             model = instantiate(filter, model=model, _convert_="all")
-        optimizer = instantiate(optimizer, params=model.parameters(),
-                                _convert_="all")
+        if optimizer_filters is None:
+            params = model.parameters()
+        else:
+            params = []
+            for filter_config in optimizer_filters:
+                filter_config['params'] = instantiate(filter_config.pop('filter'),
+                                                      model=model, _convert_="all").parameters()
+                params.append(filter_config)
+        optimizer = instantiate(optimizer, params=params, _convert_="all")
         if regularizer is not None:
             regularizer = instantiate(regularizer, model=model, _convert_="all")
 
@@ -64,24 +74,32 @@ class OptimConfig(object):
         }
 
     def configuration(self):
-        return {"optimizer": self.optimizer,
-                "lr_scheduler": self.lr_dict()}
+        config = {"optimizer": self.optimizer,
+                  "lr_scheduler": self.lr_dict()}
+        if self.optimizer_frequency is not None:
+            config["frequency"] = self.optimizer_frequency
+        return config
 
     def regularizers(self):
         return [self.regularizer]
 
 
 class OptimConfigList(OptimConfig):
-    def __init__(self, *optim_configs):
-        self.optim_configs = optim_configs
+    def __init__(self, configs):
+        self.optim_configs = configs
 
     @staticmethod
-    def instantiate(model, *optim_configs):
-        optim_configs = [OptimConfig.instantiate(model, *config) for config in optim_configs]
+    def instantiate(model, configs):
+        optim_configs = [OptimConfig.instantiate(model, **config) for config in configs]
         return OptimConfigList(optim_configs)
 
     def configuration(self):
-        return (optim_config.configuration() for optim_config in self.optim_configs)
+        if self.optim_configs[0].optimizer_frequency is not None:
+            return tuple((optim_config.configuration() for optim_config in self.optim_configs))
+        else:
+            optimizer_list = [optim_config.optimizer for optim_config in self.optim_configs]
+            lr_scheduler_list = [optim_config.lr_dict() for optim_config in self.optim_configs]
+            return optimizer_list, lr_scheduler_list
 
     def regularizers(self):
-        return [optim_config.regularizer for optim_config in self.optim_configs]
+        return tuple([optim_config.regularizer for optim_config in self.optim_configs])

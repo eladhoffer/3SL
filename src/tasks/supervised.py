@@ -1,3 +1,4 @@
+from typing import OrderedDict
 from pytorch_lightning.metrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
@@ -21,7 +22,7 @@ class ClassificationTask(Task):
         acc = FM.accuracy(output.softmax(dim=-1), target)
         return {'accuracy': acc}
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
         if isinstance(batch, dict):  # drop unlabled
             batch = batch['labeled']
         x, y = batch
@@ -88,7 +89,7 @@ class DistillationTask(ClassificationTask):
         output = F.log_softmax(output / self.T, -1)
         return F.kl_div(output, target, reduction='batchmean', log_target=True)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
         if isinstance(batch, dict):  # drop unlabled
             batch = batch['labeled']
         x, y = batch
@@ -165,10 +166,10 @@ class FinetuneTask(ClassificationTask):
         if remove_layer is not None:
             setattr(self.model, remove_layer, torch.nn.Identity())
 
-        self.model = torch.nn.Sequential(
-            self.model if finetune_all else FrozenModule(self.model),
-            self.classifier
-        )
+        self.model = torch.nn.Sequential(OrderedDict([
+            ('pretrained', self.model if finetune_all else FrozenModule(self.model)),
+            ('classifier', self.classifier)
+        ]))
         # if load_all:
         #     state_dict = torch.load(checkpoint_path)['state_dict']
         #     self.load_state_dict(state_dict, strict=False)

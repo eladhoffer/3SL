@@ -7,6 +7,7 @@ defaults:
   - override /data: cifar10.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
+  - override /task: default.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -28,6 +29,39 @@ data:
     loader:
       batch_size: 512
 
+optimizer_config:
+  optimizer:
+    _target_: torch.optim.SGD
+    lr: 0.005
+    momentum: 0.9
+  lr_scheduler:
+    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    T_max: ${trainer.max_steps}
+    eta_min: 0
+  interval: step
+  regularizer:
+    _target_: src.optim.regularization.WeightDecay
+    value: 5e-4
+  filter:
+    _target_: src.optim.filter.Filter
+    module_name: classifier
+    exclude: true 
+classifier_optimizer_config:
+  optimizer:
+    _target_: torch.optim.SGD
+    lr: 0.1
+    momentum: 0.9
+  lr_scheduler:
+    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    T_max: ${trainer.max_steps}
+    eta_min: 0
+  interval: step
+  regularizer:
+    _target_: src.optim.regularization.WeightDecay
+    value: 5e-4
+  filter:
+    _target_: src.optim.filter.Filter
+    module_name: classifier
 task:
   _target_: src.tasks.supervised.FinetuneTask
   model:
@@ -36,17 +70,28 @@ task:
     width: [160, 320, 640]
     depth: 28
   optimizer:
-    _target_: src.optim.OptimRegime
-    regime:
-      - epoch: 0
-        optimizer: SGD
-        lr: 1e-1
-        momentum: 0.9
-        lr_scheduler:
-          name: CosineAnnealingLR
-          time_frame: step
-          T_max: ${trainer.max_steps}
-          eta_min: 0
+    _target_: src.optim.OptimConfig.instantiate
+    optimizer:
+      _target_: torch.optim.SGD
+      momentum: 0.9
+    optimizer_filters:
+      - filter:
+          _target_: src.optim.filter.Filter
+          module_name: classifier
+          exclude: true
+        lr: 0.005      
+      - filter:
+          _target_: src.optim.filter.Filter
+          module_name: classifier
+        lr: 0.1
+    lr_scheduler:
+      _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+      T_max: ${trainer.max_steps}
+      eta_min: 0
+    interval: step
+    regularizer:
+      _target_: src.optim.regularization.WeightDecay
+      value: 5e-4
   classifier:
     _target_: torch.nn.Linear
     in_features: 640
