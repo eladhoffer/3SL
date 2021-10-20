@@ -87,13 +87,18 @@ class Task(pl.LightningModule):
         return losses.mean()
 
     def log_lr(self, **kwargs):
+        lrs = []
         if self.optimizer_regime is not None:
-            self.log('lr', self.optimizer_regime.get_lr()[0], **kwargs)
-        lr_scheduler = self.lr_schedulers()
-        if isinstance(lr_scheduler, (list, tuple)):
-            lr_scheduler = lr_scheduler[0]
-        if lr_scheduler is not None:
-            self.log('lr', lr_scheduler.get_last_lr()[0], **kwargs)
+            lrs = self.optimizer_regime.get_lr()
+        else:
+            lr_schedulers = self.lr_schedulers()
+            if not isinstance(lr_schedulers, (list, tuple)):
+                lr_schedulers = [lr_schedulers]
+            for lr_scheduler in lr_schedulers:
+                lrs += lr_scheduler.get_last_lr()
+        for idx, lr in enumerate(lrs):
+            name = 'lr' if idx == 0 else f'lr_{idx}'
+            self.log(name, lr, **kwargs)
 
     def create_ema(self, device=None):
         self._model_ema = deepcopy(self.model)

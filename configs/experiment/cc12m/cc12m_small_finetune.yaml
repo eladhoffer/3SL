@@ -79,11 +79,11 @@ task:
           _target_: src.optim.filter.Filter
           module_name: classifier
           exclude: true
-        lr: 0.005      
+        lr: 0.1      
       - filter:
           _target_: src.optim.filter.Filter
           module_name: classifier
-        lr: 0.1
+        lr: 0.5
     lr_scheduler:
       _target_: torch.optim.lr_scheduler.CosineAnnealingLR
       T_max: ${trainer.max_steps}
