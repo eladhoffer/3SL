@@ -12,13 +12,13 @@ import numpy as np
 
 
 class CCSE(VisionDataset):
-    def __init__(self, transform=None, target_transform=None,
+    def __init__(self, transform=None, label_transform=None,
                  sample_csv='/home/labuser/Datasets/cc12m/500K.csv',
                  image_dir='/home/labuser/Datasets/cc12m/training',
                  embedding_dir='/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base',
                  embedding_file='/home/labuser/Datasets/cc12m/all_embeddings.npy'):
         self.transform = transform
-        self.target_transform = target_transform
+        self.label_transform = label_transform
         self.sample_csv = sample_csv
         self.image_dir = image_dir
         self.embedding_dir = embedding_dir
@@ -42,8 +42,8 @@ class CCSE(VisionDataset):
             embedding = torch.from_numpy(self.embeddings[index])
         if self.transform is not None:
             image = self.transform(image)
-        if self.target_transform is not None:
-            embedding = self.target_transform(embedding)
+        if self.label_transform is not None:
+            embedding = self.label_transform(embedding)
         return image, embedding
 
 

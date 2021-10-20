@@ -3,6 +3,10 @@ normalize:
   _target_: src.data.transforms.Normalize
   mean: [0.485, 0.456, 0.406]
   std: [0.229, 0.224, 0.225]
+normalize_target:
+  _target_: src.data.transforms.NormalizeEmbeddings
+  mean_filename: /home/labuser/Datasets/cc12m/all_embeddings_mean.npy
+  std_filename: /home/labuser/Datasets/cc12m/all_embeddings_std.npy  
 train:
   dataset:
     _target_: src.data.datasets.cc12m.CCSE
@@ -10,11 +14,15 @@ train:
     transform:
       _target_: src.data.transforms.Compose
       transforms:
-        - _target_: src.data.transforms.RandomCrop
+        - _target_: src.data.transforms.RandomResizedCrop
           size: 224
+          scale: 
+            - 0.5
+            - 1.0
         - _target_: src.data.transforms.RandomHorizontalFlip
         - _target_: src.data.transforms.ToTensor
         - ${data.normalize}
+    label_transform: ${data.normalize_target}
   loader:
     batch_size: ${batch_size}
     shuffle: true
@@ -34,6 +42,7 @@ val:
           size: 224        
         - _target_: src.data.transforms.ToTensor
         - ${data.normalize}
+    label_transform: ${data.normalize_target}
   loader:
     batch_size: ${batch_size}
     shuffle: true
