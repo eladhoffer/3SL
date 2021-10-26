@@ -131,7 +131,7 @@ class SupervisedEmbeddingTask(ClassificationTask):
         target = self.embed_target(target)
         if self.mixup:
             target = self.mixup.mix_target(target, output.size(-1))
-        return self.criterion(output, target)
+        return self.criterion(output, target).mean()
 
     def metrics(self, output, target):
         metric = {}
