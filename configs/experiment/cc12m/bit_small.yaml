@@ -3,8 +3,8 @@
 # to execute this experiment run:
 # python run.py experiment=fixmatch_cifar10
 defaults:
-  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
-  - override /data: cc12m_small.yaml
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /data: cc5m_small.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
   - override /task: default.yaml
@@ -25,18 +25,17 @@ data:
   train:
     loader:
       batch_size: 256
-      num_workers: 16
+      num_workers: 4
   val:
     loader:
       batch_size: 256
-      num_workers: 16
+      num_workers: 4
 task:
   _target_: src.tasks.supervised.SupervisedEmbeddingTask
   model:
-    _target_: src.models.resnet.ResNet_cifar
+    _target_: timm.create_model
+    model_name: resnetv2_50x1_bitm
     num_classes: 768
-    width: [160, 320, 640]
-    depth: 28
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
@@ -45,24 +44,24 @@ task:
         - 0.9
         - 0.98
       eps: 1e-6
-      weight_decay: 0.01
-      lr: 1e-3
+      weight_decay: 0.001
+      lr: 5e-4
     optimizer_filters:
       - filter:
-          _target_: src.optim.filter.OnlyBN
+          _target_: src.optim.filter.Filter
+          parameter_name: bias
           exclude: true
       - filter:
-          _target_: src.optim.filter.OnlyBN
+          _target_: src.optim.filter.Filter
+          parameter_name: bias
         weight_decay: 0.0     
     lr_scheduler:
       _target_: torch.optim.lr_scheduler.CosineAnnealingLR
       T_max: ${trainer.max_steps}
       eta_min: 0
-    interval: step      
+    interval: step
   criterion:
-    _target_: lightly.loss.ntx_ent_loss.NTXentLoss
-    temperature: 0.5
-    memory_bank_size: 0
+    _target_: torch.nn.MSELoss
 callbacks:
   model_checkpoint:
-    monitor: "loss/val"     
+    monitor: "loss/val"

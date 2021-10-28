@@ -16,18 +16,17 @@ resume: null
 
 trainer:
   min_epochs: 1
-  max_steps: 200000
+  max_steps: 50000
   max_epochs: ${trainer.max_steps}
   benchmark: true
-  precision: 16
 
 data:
   train:
     loader:
-      batch_size: 256
+      batch_size: 64
   val:
     loader:
-      batch_size: 512
+      batch_size: 128
 
 task:
   _target_: src.tasks.supervised.FinetuneTask
@@ -52,4 +51,4 @@ task:
     _target_: torch.nn.Linear
     in_features: 2048
     out_features: 1000
-  checkpoint_path: /home/labuser/Pytorch/3SL/results/cc12m/cc12m_imagenet/checkpoints/last.ckpt
+  checkpoint_path: /home/ehoffer/PyTorch/3SL/results/cc12m_imagenet_mse/checkpoints/last.ckpt

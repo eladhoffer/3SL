@@ -4,7 +4,7 @@
 # python run.py experiment=fixmatch_cifar10
 defaults:
   - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
-  - override /data: cc12m_small.yaml
+  - override /data: cc5m_small.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
   - override /task: default.yaml
@@ -18,8 +18,7 @@ trainer:
   min_epochs: 1
   max_steps: 19531
   max_epochs: ${trainer.max_steps}
-  benchmark: true
-  precision: 16
+  benchmark: false
   val_check_interval: 4000
 
 data:
@@ -48,16 +47,20 @@ task:
       eps: 1e-6
       weight_decay: 0.01
       lr: 1e-3
+    optimizer_filters:
+      - filter:
+          _target_: src.optim.filter.OnlyBN
+          exclude: true
+      - filter:
+          _target_: src.optim.filter.OnlyBN
+        weight_decay: 0.0     
     lr_scheduler:
-      _target_: src.optim.scheduler.LinearWarmUpDecay
-      lr: 1e-3
-      init_lr: 1e-5
-      warmup_steps: 100
-      total_steps: ${trainer.max_steps}
+      _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+      T_max: ${trainer.max_steps}
+      eta_min: 0
     interval: step
   criterion:
-    _target_: torch.nn.L1Loss
-  class_embeddings: /home/labuser/Pytorch/3SL/cifar10_embedding.pt
+    _target_: torch.nn.CosineSimilarity
 callbacks:
   model_checkpoint:
-    monitor: "loss/val"     
+    monitor: "loss/val"

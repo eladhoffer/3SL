@@ -60,9 +60,7 @@ task:
       eta_min: 0
     interval: step      
   criterion:
-    _target_: lightly.loss.ntx_ent_loss.NTXentLoss
-    temperature: 0.5
-    memory_bank_size: 0
+    _target_: lightly.loss.hypersphere_loss.HypersphereLoss
 callbacks:
   model_checkpoint:
     monitor: "loss/val"     

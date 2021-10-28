@@ -6,19 +6,19 @@ normalize:
 normalize_target:
   _target_: src.data.transforms.NormalizeEmbeddings
   mean_filename: /home/ehoffer/Datasets/cc12m/all_embeddings_mean.npy
-  std_filename: /home/ehoffer/Datasets/cc12m/all_embeddings_std.npy  
+  std_filename: /home/ehoffer/Datasets/cc12m/all_embeddings_std.npy
 train:
   dataset:
-    _target_: src.data.datasets.cc12m.CCSE
-    sample_csv: /home/ehoffer/Datasets/cc12m/10M.csv
+    _target_: src.data.datasets.cc12m.CC5Ms
+    split: train
+    path: /home/ehoffer/Datasets/cc12m/
     transform:
       _target_: src.data.transforms.Compose
       transforms:
-        - _target_: src.data.transforms.Resize
-          size: 32
+        - _target_: src.data.transforms.RandomHorizontalFlip
         - _target_: src.data.transforms.RandomCrop
           size: 32
-        - _target_: src.data.transforms.RandomHorizontalFlip
+          padding: 4
         - _target_: src.data.transforms.ToTensor
         - ${data.normalize}
     label_transform: ${data.normalize_target}
@@ -30,21 +30,20 @@ train:
     pin_memory: true    
 val:
   dataset:
-    _target_: src.data.datasets.cc12m.CCSE
-    sample_csv: /home/ehoffer/Datasets/cc12m/5K.csv
+    _target_: src.data.datasets.cc12m.CC5Ms
+    split: eval
+    path: /home/ehoffer/Datasets/cc12m/
     transform:
       _target_: src.data.transforms.Compose
       transforms:
-        - _target_: src.data.transforms.Resize
-          size: 32
         - _target_: src.data.transforms.CenterCrop
-          size: 32        
+          size: 32
         - _target_: src.data.transforms.ToTensor
         - ${data.normalize}
     label_transform: ${data.normalize_target}
   loader:
-    batch_size: ${batch_size}
-    shuffle: true
-    drop_last: true
+    batch_size: ${eval_batch_size}
+    shuffle: false
+    drop_last: false
     num_workers: 8
-    pin_memory: true 
+    pin_memory: true    

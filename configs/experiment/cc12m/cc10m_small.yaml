@@ -3,9 +3,9 @@
 # to execute this experiment run:
 # python run.py experiment=fixmatch_cifar10
 defaults:
-  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
-  - override /data: cc12m_small.yaml
-  - override /callbacks: default.yaml
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /data: cc10m_small.yaml
+  - override /callbacks: periodic_checkpoint.yaml
   - override /logger: many_loggers.yaml
   - override /task: default.yaml
 # all parameters below will be merged with parameters from default configurations set above
@@ -16,20 +16,20 @@ resume: null
 
 trainer:
   min_epochs: 1
-  max_steps: 19531
+  max_steps: 100001
   max_epochs: ${trainer.max_steps}
   benchmark: true
-  val_check_interval: 4000
+  val_check_interval: 5000
 
 data:
   train:
     loader:
       batch_size: 256
-      num_workers: 16
+      num_workers: 8
   val:
     loader:
       batch_size: 256
-      num_workers: 16
+      num_workers: 8
 task:
   _target_: src.tasks.supervised.SupervisedEmbeddingTask
   model:
@@ -58,11 +58,12 @@ task:
       _target_: torch.optim.lr_scheduler.CosineAnnealingLR
       T_max: ${trainer.max_steps}
       eta_min: 0
-    interval: step      
+    interval: step
   criterion:
-    _target_: lightly.loss.ntx_ent_loss.NTXentLoss
-    temperature: 0.5
-    memory_bank_size: 0
+    _target_: torch.nn.MSELoss
 callbacks:
   model_checkpoint:
-    monitor: "loss/val"     
+    monitor: "loss/val"    
+  periodic_checkpoint:
+    save_step_frequency: 10000
+  

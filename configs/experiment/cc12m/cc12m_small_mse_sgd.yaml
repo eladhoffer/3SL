@@ -18,7 +18,7 @@ trainer:
   min_epochs: 1
   max_steps: 19531
   max_epochs: ${trainer.max_steps}
-  benchmark: true
+  benchmark: false
   val_check_interval: 4000
 
 data:
@@ -40,29 +40,24 @@ task:
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
-      _target_: torch.optim.AdamW
-      betas:
-        - 0.9
-        - 0.98
-      eps: 1e-6
-      weight_decay: 0.01
-      lr: 1e-3
+      _target_: torch.optim.SGD
+      weight_decay: 5e-4
+      lr: 0.2
+      momentum: 0.9
     optimizer_filters:
       - filter:
           _target_: src.optim.filter.OnlyBN
           exclude: true
       - filter:
           _target_: src.optim.filter.OnlyBN
-        weight_decay: 0.0     
+        weight_decay: 0.0
     lr_scheduler:
       _target_: torch.optim.lr_scheduler.CosineAnnealingLR
       T_max: ${trainer.max_steps}
       eta_min: 0
-    interval: step      
+    interval: step
   criterion:
-    _target_: lightly.loss.ntx_ent_loss.NTXentLoss
-    temperature: 0.5
-    memory_bank_size: 0
+    _target_: torch.nn.MSELoss
 callbacks:
   model_checkpoint:
-    monitor: "loss/val"     
+    monitor: "loss/val"
