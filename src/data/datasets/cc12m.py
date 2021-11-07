@@ -107,6 +107,16 @@ class CC5Ms(Dataset):
         return img, embedding
 
 
+class CC10Ms(CC5Ms):
+    def __init__(self, transform=None, label_transform=None,
+                 split='train',
+                 path='/home/labuser/Datasets/cc12m/',
+                 training_filenames=('cc12m_small_10M_images.npy',
+                                     'cc12m_small_10M_embeddings.npy'),
+                 eval_filenames=('cc12m_small_5K_images.npy', 'cc12m_small_5K_embeddings.npy')):
+        super().__init__(transform, label_transform, split, path, training_filenames, eval_filenames)
+
+
 class NormalizeEmbeddings:
     def __init__(self, mean_filename, std_filename, eps=1e-8) -> None:
         self.mean = torch.from_numpy(np.load(mean_filename))

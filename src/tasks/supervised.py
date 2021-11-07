@@ -2,15 +2,17 @@ from typing import OrderedDict
 from pytorch_lightning.metrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
+from src.utils_pt.misc import calibrate_bn
 from src.tasks.task import Task
 import torch
 from hydra.utils import instantiate
 
 
 class ClassificationTask(Task):
-    def __init__(self, model, optimizer, label_smoothing=None, **kwargs):
+    def __init__(self, model, optimizer, label_smoothing=None, calibrate_bn_on_eval=False, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.label_smoothing = label_smoothing
+        self.calibrate_bn_on_eval = calibrate_bn_on_eval
         self.save_hyperparameters()
 
     def loss(self, output, target):
@@ -26,7 +28,6 @@ class ClassificationTask(Task):
         if isinstance(batch, dict):  # drop unlabled
             batch = batch['labeled']
         x, y = batch
-        self.train()
         if self.mixup:
             self.mixup.sample(x.size(0))
             x = self.mixup(x)
@@ -47,9 +48,12 @@ class ClassificationTask(Task):
 
     def evaluation_step(self, batch, batch_idx):
         model = getattr(self, '_model_ema', self.model)
-        model.eval()
         x, y = batch
-        y_hat = model(x)
+        if self.calibrate_bn_on_eval:
+            with calibrate_bn(model):
+                y_hat = model(x)
+        else:
+            y_hat = model(x)
         metrics = self.metrics(y_hat, y)
         metrics['loss'] = self.loss(y_hat, y)
         return metrics
@@ -157,20 +161,29 @@ class FrozenModule(torch.nn.Module):
 
 class FinetuneTask(ClassificationTask):
     def __init__(self, model, optimizer, classifier, checkpoint_path,
-                 remove_layer='fc', finetune_all=True, **kwargs):
+                 remove_layer='fc', finetune_all=True, freeze_bn=False, **kwargs):
         super().__init__(model, optimizer, **kwargs)
-        self.classifier = instantiate(classifier)
+        self.freeze_bn = freeze_bn
         state_dict = torch.load(checkpoint_path)['state_dict']
-        self.load_state_dict(state_dict, strict=False)
+        state_dict = {k.replace('module', 'model'): v for k, v in state_dict.items()}
+        self.load_state_dict(state_dict, strict=True)
 
         if remove_layer is not None:
             setattr(self.model, remove_layer, torch.nn.Identity())
-
-        self.model = torch.nn.Sequential(OrderedDict([
-            ('pretrained', self.model if finetune_all else FrozenModule(self.model)),
-            ('classifier', self.classifier)
-        ]))
+        if classifier is not None:
+            self.classifier = instantiate(classifier)
+            self.model = torch.nn.Sequential(OrderedDict([
+                ('pretrained', self.model if finetune_all else FrozenModule(self.model)),
+                ('classifier', self.classifier)
+            ]))
         # if load_all:
         #     state_dict = torch.load(checkpoint_path)['state_dict']
         #     self.load_state_dict(state_dict, strict=False)
         self.save_hyperparameters()
+
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
+        if self.freeze_bn:
+            for m in self.model.modules():
+                if isinstance(m, torch.nn.BatchNorm2d):
+                    m.eval()
+        return super().training_step(batch, batch_idx, optimizer_idx=optimizer_idx)
