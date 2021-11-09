@@ -159,17 +159,23 @@ class FrozenModule(torch.nn.Module):
             return self.module(*args, **kwargs)
 
 
+def _remove_module(model, name):
+    for n, m in model.named_children():
+        if n == name:
+            setattr(model, name, torch.nn.Identity())
+        _remove_module(m, name)
+
+
 class FinetuneTask(ClassificationTask):
     def __init__(self, model, optimizer, classifier, checkpoint_path,
                  remove_layer='fc', finetune_all=True, freeze_bn=False, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.freeze_bn = freeze_bn
         state_dict = torch.load(checkpoint_path)['state_dict']
-        state_dict = {k.replace('module', 'model'): v for k, v in state_dict.items()}
+        # state_dict = {k.replace('module', 'model'): v for k, v in state_dict.items()}
         self.load_state_dict(state_dict, strict=True)
-
         if remove_layer is not None:
-            setattr(self.model, remove_layer, torch.nn.Identity())
+            _remove_module(self.model, remove_layer)
         if classifier is not None:
             self.classifier = instantiate(classifier)
             self.model = torch.nn.Sequential(OrderedDict([
