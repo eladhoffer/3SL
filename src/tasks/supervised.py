@@ -106,15 +106,15 @@ class DistillationTask(ClassificationTask):
 
 class SupervisedEmbeddingTask(ClassificationTask):
     def __init__(self, model, optimizer, criterion=None,
-                 normalize_target=None,
+                 transform_target=None,
                  class_embeddings=None, finetune_class_embedding=False, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.criterion = instantiate(criterion)
         self.model.criterion = self.criterion  # in case of parametrized loss
-        if normalize_target is not None:
-            self.model.normalize_target = instantiate(normalize_target)
+        if transform_target is not None:
+            self.model.transform_target = instantiate(transform_target)
         else:
-            self.model.normalize_target = None
+            self.model.transform_target = None
         if class_embeddings is not None:
             class_embeddings = torch.load(class_embeddings, map_location='cpu')
             if finetune_class_embedding:
@@ -127,8 +127,8 @@ class SupervisedEmbeddingTask(ClassificationTask):
     def embed_target(self, target):
         if target.dtype == torch.long:
             target = self.model.class_embeddings.index_select(0, target)
-        if self.model.normalize_target is not None:
-            target = self.model.normalize_target(target)
+        if self.model.transform_target is not None:
+            target = self.model.transform_target(target)
         return target
 
     def loss(self, output, target):
@@ -173,7 +173,7 @@ class FinetuneTask(ClassificationTask):
         self.freeze_bn = freeze_bn
         state_dict = torch.load(checkpoint_path)['state_dict']
         # state_dict = {k.replace('module', 'model'): v for k, v in state_dict.items()}
-        self.load_state_dict(state_dict, strict=True)
+        self.load_state_dict(state_dict, strict=False)
         if remove_layer is not None:
             _remove_module(self.model, remove_layer)
         if classifier is not None:
