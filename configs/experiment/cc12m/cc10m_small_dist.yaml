@@ -1,0 +1,77 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=fixmatch_cifar10
+defaults:
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /data: cc10m_small.yaml
+  - override /callbacks: periodic_checkpoint.yaml
+  - override /logger: many_loggers.yaml
+  - override /task: default.yaml
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+resume: null
+
+trainer:
+  min_epochs: 1
+  max_steps: 100001
+  max_epochs: ${trainer.max_steps}
+  benchmark: true
+  val_check_interval: 5000
+
+data:
+  train:
+    loader:
+      batch_size: 256
+      num_workers: 8
+  val:
+    loader:
+      batch_size: 256
+      num_workers: 8
+task:
+  _target_: src.tasks.supervised.SupervisedEmbeddingTask
+  model:
+    _target_: src.models.resnet.ResNet_cifar
+    num_classes: 64
+    width: [160, 320, 640]
+    depth: 28
+  optimizer:
+    _target_: src.optim.OptimConfig.instantiate
+    optimizer:
+      _target_: torch.optim.AdamW
+      betas:
+        - 0.9
+        - 0.98
+      eps: 1e-6
+      weight_decay: 0.01
+      lr: 1e-3
+    optimizer_filters:
+      - filter:
+          _target_: src.optim.filter.OnlyBN
+          exclude: true
+      - filter:
+          _target_: src.optim.filter.OnlyBN
+        weight_decay: 0.0     
+    lr_scheduler:
+      _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+      T_max: ${trainer.max_steps}
+      eta_min: 0
+    interval: step
+  transform_target:
+    _target_: src.tasks.utils.mlp_normalized
+    feats:
+      - 768
+      - 64
+    final_act: false
+    final_norm: true
+  criterion:
+    _target_: lightly.loss.ntx_ent_loss.NTXentLoss
+    temperature: 0.5
+    memory_bank_size: 0
+callbacks:
+  model_checkpoint:
+    monitor: "loss/val"    
+  periodic_checkpoint:
+    save_step_frequency: 10000

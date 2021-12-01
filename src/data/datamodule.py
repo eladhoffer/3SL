@@ -4,9 +4,9 @@ from torchvision import datasets
 from typing import Optional
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Subset
+from hydra.utils import instantiate
 from copy import deepcopy
-import warnings
-warnings.filterwarnings("ignore", "(Possibly )?corrupt EXIF data", UserWarning)
+from src.data.datasets.vision import vision_datasets
 
 
 class DataConfig:
@@ -15,11 +15,23 @@ class DataConfig:
 
     @staticmethod
     def _get_dataset(dataset, **kwargs):
-        if isinstance(dataset, dict):
+        try:
+            dataset = instantiate(dataset, _convert_="all")
+        except:
+            pass
+        if isinstance(dataset, dict):  # if dict, assume it's a vision dataset config
             dataset = deepcopy(dataset)
             dataset.update(kwargs)
-            dataset = DataConfig._vision_datasets(**dataset)['dataset']
+            dataset = vision_datasets(**dataset)['dataset']
+
         return dataset
+
+    @staticmethod
+    def _get_loader(loader, dataset):
+        loader = instantiate(loader, dataset=dataset, _convert_="all")
+        if isinstance(loader, dict):
+            loader = DataLoader(**loader)
+        return loader
 
     @staticmethod
     def _extract_datasets(config, **kwargs):
@@ -48,7 +60,7 @@ class DataConfig:
             dataset = DataConfig._extract_datasets(config, **kwargs)
             if dataset is None:
                 return None
-            return DataLoader(dataset, **loader)
+            return DataConfig._get_loader(loader, dataset)
         return {key: DataConfig._extract_loaders(value, **kwargs)
                 for key, value in config.items() if value is not None}
 
@@ -57,65 +69,6 @@ class DataConfig:
 
     def loader(self):
         return self._extract_loaders(self.config)
-
-    @staticmethod
-    def _vision_datasets(name='cifar10', split='train', transform=None,
-                         target_transform=None, download=False, path='~/Datasets',
-                         subset_indices=None, **kwargs):
-        train = (split == 'train')
-        root = os.path.join(os.path.expanduser(path), name)
-        if name == 'cifar10':
-            dataset = datasets.CIFAR10(root=root,
-                                       train=train,
-                                       transform=transform,
-                                       target_transform=target_transform,
-                                       download=download)
-            num_classes = 10
-            sample_size = (3, 32, 32)
-        elif name == 'cifar100':
-            dataset = datasets.CIFAR100(root=root,
-                                        train=train,
-                                        transform=transform,
-                                        target_transform=target_transform,
-                                        download=download)
-            num_classes = 10
-            sample_size = (3, 32, 32)
-
-        elif name == 'mnist':
-            dataset = datasets.MNIST(root=root,
-                                     train=train,
-                                     transform=transform,
-                                     target_transform=target_transform,
-                                     download=download)
-            num_classes = 10
-            sample_size = (1, 28, 28)
-        elif name == 'stl10':
-            dataset = datasets.STL10(root=root,
-                                     split=split,
-                                     transform=transform,
-                                     target_transform=target_transform,
-                                     download=download)
-            num_classes = 10
-            sample_size = (3, 96, 96)
-        elif name == 'imagenet':
-            if train:
-                root = os.path.join(root, 'train')
-            else:
-                root = os.path.join(root, 'val')
-            dataset = datasets.ImageFolder(root=root,
-                                           transform=transform,
-                                           target_transform=target_transform)
-            num_classes = 1000
-            sample_size = (3, None, None)
-
-        if subset_indices is not None:
-            dataset = Subset(dataset, subset_indices)
-        return {
-            'dataset': dataset,
-            'num_classes': num_classes,
-            'sample_size': sample_size,
-            **kwargs
-        }
 
 
 class DataModule(LightningDataModule):

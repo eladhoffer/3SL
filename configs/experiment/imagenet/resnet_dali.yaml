@@ -1,0 +1,44 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=resnet50_imagenet.yaml
+
+defaults:
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /task: resnet.yaml
+  - override /data: imagenet_dali.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+batch_size: 64
+resume: null
+
+trainer:
+  max_epochs: 90
+  gpus: 4
+  precision: 16
+
+task:
+  _target_: src.tasks.supervised.ClassificationTask
+  model:
+    _target_: torchvision.models.resnet50
+  optimizer:
+    _target_: src.optim.OptimRegime    
+    regime:
+      - epoch: 0
+        optimizer: SGD
+        lr: 0.1
+        momentum: 0.9
+        regularizer:
+          name: 'WeightDecay'
+          value: 1e-4
+      - epoch: 30
+        lr: 0.04
+      - epoch: 60
+        lr: 0.004
+      - epoch: 80
+        lr: 0.0004

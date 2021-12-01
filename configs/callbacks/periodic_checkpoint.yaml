@@ -1,0 +1,4 @@
+periodic_checkpoint:
+  _target_: src.callbacks.checkpoint.CheckpointEveryNSteps
+  save_step_frequency: 1000
+  prefix: './checkpoints/'

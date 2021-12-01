@@ -1,7 +1,6 @@
 from typing import OrderedDict
 from pytorch_lightning.metrics import functional as FM
 import torch.nn.functional as F
-from src.utils_pt.cross_entropy import cross_entropy
 from src.utils_pt.misc import calibrate_bn
 from src.tasks.task import Task
 import torch
@@ -9,7 +8,7 @@ from hydra.utils import instantiate
 
 
 class ClassificationTask(Task):
-    def __init__(self, model, optimizer, label_smoothing=None, calibrate_bn_on_eval=False, **kwargs):
+    def __init__(self, model, optimizer, label_smoothing=0.0, calibrate_bn_on_eval=False, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.label_smoothing = label_smoothing
         self.calibrate_bn_on_eval = calibrate_bn_on_eval
@@ -18,7 +17,7 @@ class ClassificationTask(Task):
     def loss(self, output, target):
         if self.mixup:
             target = self.mixup.mix_target(target, output.size(-1))
-        return cross_entropy(output, target, smooth_eps=self.label_smoothing)
+        return F.cross_entropy(output, target, label_smoothing=self.label_smoothing)
 
     def metrics(self, output, target):
         acc = FM.accuracy(output.softmax(dim=-1), target)
@@ -106,7 +105,7 @@ class DistillationTask(ClassificationTask):
 
 class SupervisedEmbeddingTask(ClassificationTask):
     def __init__(self, model, optimizer, criterion=None,
-                 transform_target=None,
+                 transform_output=None, transform_target=None,
                  class_embeddings=None, finetune_class_embedding=False, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.criterion = instantiate(criterion)
@@ -115,6 +114,7 @@ class SupervisedEmbeddingTask(ClassificationTask):
             self.model.transform_target = instantiate(transform_target)
         else:
             self.model.transform_target = None
+
         if class_embeddings is not None:
             class_embeddings = torch.load(class_embeddings, map_location='cpu')
             if finetune_class_embedding:
@@ -168,12 +168,12 @@ def _remove_module(model, name):
 
 class FinetuneTask(ClassificationTask):
     def __init__(self, model, optimizer, classifier, checkpoint_path,
-                 remove_layer='fc', finetune_all=True, freeze_bn=False, **kwargs):
+                 remove_layer='fc', finetune_all=True, freeze_bn=False, strict_load=True, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.freeze_bn = freeze_bn
         state_dict = torch.load(checkpoint_path)['state_dict']
-        # state_dict = {k.replace('module', 'model'): v for k, v in state_dict.items()}
-        self.load_state_dict(state_dict, strict=False)
+        state_dict = {k.replace('module', 'model'): v for k, v in state_dict.items()}
+        self.load_state_dict(state_dict, strict=strict_load)
         if remove_layer is not None:
             _remove_module(self.model, remove_layer)
         if classifier is not None:

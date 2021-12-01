@@ -4,7 +4,7 @@
 # python run.py experiment=resnet50_imagenet.yaml
 
 defaults:
-  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
   - override /task: resnet.yaml
   - override /data: imagenet.yaml
   - override /callbacks: default.yaml
@@ -14,23 +14,23 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-batch_size: 128
+batch_size: 64
 resume: null
 
 trainer:
   max_epochs: 90
-  gpus: 8
+  gpus: [0]
   precision: 16
 
 data:
   train:
     loader:
-      batch_size: 128
+      batch_size: 64
       num_workers: 2
       pin_memory: false
   val:
     loader:
-      batch_size: 512
+      batch_size: 256
       num_workers: 2
       pin_memory: false   
 task:
@@ -42,7 +42,7 @@ task:
     regime:
       - epoch: 0
         optimizer: SGD
-        lr: 0.4
+        lr: 0.1
         momentum: 0.9
         regularizer:
           name: 'WeightDecay'
