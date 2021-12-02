@@ -1,5 +1,5 @@
 from .supervised import ClassificationTask
-from pytorch_lightning.metrics import functional as FM
+from torchmetrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
 import torch

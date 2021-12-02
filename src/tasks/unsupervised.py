@@ -1,6 +1,6 @@
 # from .utils import mlp_normalized, pack_inputs, unpack_outputs, DiffImage
 from src.tasks.supervised import ClassificationTask
-from pytorch_lightning.metrics import functional as FM
+from torchmetrics import functional as FM
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

@@ -1,4 +1,4 @@
-from pytorch_lightning.metrics import functional as FM
+from torchmetrics import functional as FM
 import torch.nn.functional as F
 from .task import Task
 import torch

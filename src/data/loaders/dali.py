@@ -69,9 +69,10 @@ def imagenet_pipeline(data_dir, crop, size, shard_id, num_shards, cpu=False, is_
     return images, labels
 
 
-def labeled_image_iterator(dali_iterator):
-    for batch in dali_iterator:
-        yield batch[0]['data'], batch[0]['label'][:, 0]
+class ModifiedDALIClassificationIterator(DALIClassificationIterator):
+    def __next__(self):
+        batch = super(ModifiedDALIClassificationIterator, self).__next__()
+        return batch[0]['data'], batch[0]['label'][:, 0]
 
 
 def imagenet_loader(dataset, batch_size, drop_last=False, num_workers=0,
@@ -104,6 +105,7 @@ def imagenet_loader(dataset, batch_size, drop_last=False, num_workers=0,
                              image_dtype=image_dtype,
                              label_dtype=label_dtype)
     pipe.build()
-    return labeled_image_iterator(DALIClassificationIterator(pipe, reader_name="Reader",
-                                                             last_batch_policy=LastBatchPolicy.DROP if drop_last
-                                                             else LastBatchPolicy.PARTIAL))
+    return ModifiedDALIClassificationIterator(pipe,
+                                              reader_name="Reader", auto_reset=True,
+                                              last_batch_policy=LastBatchPolicy.DROP if drop_last
+                                              else LastBatchPolicy.PARTIAL)

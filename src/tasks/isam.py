@@ -1,5 +1,5 @@
 from .supervised import ClassificationTask
-from pytorch_lightning.metrics import functional as FM
+from torchmetrics import functional as FM
 import torch
 from torch.nn.utils.clip_grad import clip_grad_norm_
 

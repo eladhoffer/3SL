@@ -1,6 +1,5 @@
 import pytorch_lightning as pl
 import torch
-from src.utils_pt.optim import OptimRegime
 from copy import deepcopy
 from hydra.utils import instantiate
 from torch.nn.utils.clip_grad import clip_grad_norm_

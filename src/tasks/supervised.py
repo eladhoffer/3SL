@@ -1,5 +1,5 @@
 from typing import OrderedDict
-from pytorch_lightning.metrics import functional as FM
+from torchmetrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.misc import calibrate_bn
 from src.tasks.task import Task
