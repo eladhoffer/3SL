@@ -31,13 +31,20 @@ task:
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
-      _target_: pl_bolts.optimizers.lars.LARS
+      _target_: src.optim.lars.LARS
       lr: 1.0
       momentum: 0.9
       weight_decay: 0.0002
       nesterov: false
       trust_coefficient: 0.001
       eps: 1e-8
+    optimizer_filters:
+      - filter:
+          _target_: src.optim.filter.OnlyBiasBN
+          exclude: true
+      - filter:
+          _target_: src.optim.filter.OnlyBiasBN
+        skip_scale: true          
     lr_scheduler:
       _target_: src.optim.scheduler.PolynomialWarmUpDecay
       lr: ${task.optimizer.optimizer.lr}
