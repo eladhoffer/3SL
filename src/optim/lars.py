@@ -123,18 +123,17 @@ class LARS(Optimizer):
                     continue
 
                 d_p = p.grad
-                p_norm = torch.norm(p.data)
-                g_norm = torch.norm(p.grad.data)
-
                 if not skip_scale:
-                    # lars scaling + weight decay part
-                    if weight_decay != 0:
-                        if p_norm != 0 and g_norm != 0:
-                            lars_lr = p_norm / (g_norm + p_norm * weight_decay + group["eps"])
-                            lars_lr *= group["trust_coefficient"]
+                    p_norm = torch.norm(p.data)
+                    g_norm = torch.norm(p.grad.data)
 
-                            d_p = d_p.add(p, alpha=weight_decay)
-                            d_p *= lars_lr
+                    # lars scaling + weight decay part
+                    if p_norm != 0 and g_norm != 0:
+                        lars_lr = p_norm / (g_norm + p_norm * weight_decay + group["eps"])
+                        lars_lr *= group["trust_coefficient"]
+
+                        d_p = d_p.add(p, alpha=weight_decay)
+                        d_p *= lars_lr
 
                 # sgd part
                 if momentum != 0:
