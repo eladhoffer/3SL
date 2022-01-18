@@ -3,6 +3,7 @@ from torchmetrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.misc import calibrate_bn
 from src.tasks.task import Task
+from src.models.modules.utils import FrozenModule, remove_module
 import torch
 from hydra.utils import instantiate
 
@@ -147,25 +148,6 @@ class SupervisedEmbeddingTask(ClassificationTask):
         return metric
 
 
-class FrozenModule(torch.nn.Module):
-    def __init__(self, module):
-        super().__init__()
-        self.module = module
-        for p in self.module.parameters():
-            p.requires_grad_(False)
-
-    def forward(self, *args, **kwargs):
-        with torch.no_grad():
-            return self.module(*args, **kwargs)
-
-
-def _remove_module(model, name):
-    for n, m in model.named_children():
-        if n == name:
-            setattr(model, name, torch.nn.Identity())
-        _remove_module(m, name)
-
-
 class FinetuneTask(ClassificationTask):
     def __init__(self, model, optimizer, classifier, checkpoint_path,
                  remove_layer='fc', finetune_all=True, freeze_bn=False, strict_load=True, **kwargs):
@@ -175,7 +157,7 @@ class FinetuneTask(ClassificationTask):
         state_dict = {k.replace('module', 'model'): v for k, v in state_dict.items()}
         self.load_state_dict(state_dict, strict=strict_load)
         if remove_layer is not None:
-            _remove_module(self.model, remove_layer)
+            remove_module(self.model, remove_layer)
         if classifier is not None:
             self.classifier = instantiate(classifier)
             self.model = torch.nn.Sequential(OrderedDict([

@@ -2,6 +2,7 @@
 
 # specify here default training configuration
 defaults:
+  - _self_
   - trainer: default.yaml
   - task: resnet_cifar.yaml
   - data: cifar10.yaml

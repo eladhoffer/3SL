@@ -1,0 +1,67 @@
+_target_: src.data.DataModule
+normalize:
+  _target_: src.data.transforms.Normalize
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: t5-small
+tokenize_transform:
+  _target_: src.data.transforms.text.TokenizeString
+  tokenizer: ${data.tokenizer}
+  tokenizer_args:
+    truncation: true
+    max_length: 256
+image_text_collator:
+  _target_: src.data.collators.collate_by_name
+  text:
+    _target_: transformers.data.data_collator.DataCollatorWithPadding
+    tokenizer: ${data.tokenizer}
+    padding: true
+    pad_to_multiple_of: 1
+    return_tensors: pt
+train:
+  dataset:
+    _target_: src.data.datasets.cc12m.CC12M
+    sample_csv: /home/ehoffer/Datasets/cc12m/10M.csv
+    transform:
+      _target_: src.data.transforms.Compose
+      transforms:
+        - _target_: src.data.transforms.RandomResizedCrop
+          size: 224
+          scale: 
+            - 0.8
+            - 1.0
+        - _target_: src.data.transforms.RandomHorizontalFlip
+        - _target_: src.data.transforms.ToTensor
+        - ${data.normalize}
+    label_transform: ${data.tokenize_transform}
+  loader:
+    batch_size: ${batch_size}
+    collate_fn: ${data.image_text_collator}
+    shuffle: true
+    drop_last: true
+    num_workers: 8
+    pin_memory: true
+val:
+  dataset:
+    _target_: src.data.datasets.cc12m.CC12M
+    sample_csv: /home/ehoffer/Datasets/cc12m/5K.csv
+    transform:
+      _target_: src.data.transforms.Compose
+      transforms:
+        - _target_: src.data.transforms.Resize
+          size: 256
+        - _target_: src.data.transforms.CenterCrop
+          size: 224        
+        - _target_: src.data.transforms.ToTensor
+        - ${data.normalize}
+    label_transform: ${data.tokenize_transform}
+  loader:
+    batch_size: ${eval_batch_size}
+    collate_fn: ${data.image_text_collator}
+    shuffle: false
+    drop_last: false
+    num_workers: 8
+    pin_memory: true
+test: null    

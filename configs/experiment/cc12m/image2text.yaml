@@ -1,0 +1,38 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=fixmatch_cifar10
+defaults:
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /data: cc12m_text.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+  - override /task: image2text.yaml
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+resume: null
+
+trainer:
+  min_epochs: 1
+  max_steps: 50000
+  max_epochs: ${trainer.max_steps}
+  benchmark: true
+  gpus: 4
+  precision: 16
+  val_check_interval: 1000
+
+data:
+  train:
+    loader:
+      batch_size: 32
+      num_workers: 0
+  val:
+    loader:
+      batch_size: 32
+      num_workers: 0
+
+callbacks:
+  model_checkpoint:
+    monitor: "loss/val"     

@@ -1,5 +1,5 @@
 
-class Tokenize(object):
+class TokenizeDataset(object):
     def __init__(self, tokenizer, tokenizer_args, input='sentence', columns=['input_ids', 'attention_mask']):
         self.tokenizer = tokenizer
         self.tokenizer_args = tokenizer_args
@@ -11,3 +11,12 @@ class Tokenize(object):
                               batched=True)
         dataset.set_format(type='torch', columns=self.columns)
         return dataset
+
+
+class TokenizeString(object):
+    def __init__(self, tokenizer, tokenizer_args={}):
+        self.tokenizer = tokenizer
+        self.tokenizer_args = tokenizer_args
+
+    def __call__(self, text):
+        return self.tokenizer(text, **self.tokenizer_args)

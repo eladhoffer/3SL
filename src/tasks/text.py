@@ -1,4 +1,5 @@
 from .supervised import ClassificationTask
+from .task import Task
 from torchmetrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
@@ -98,3 +99,40 @@ class MaskedLanguageModelTask(ClassificationTask):
 
     def test_step(self, batch, batch_idx):
         return self.evaluation_step(batch, batch_idx, phase='test')
+
+
+class ImageToTextTask(ClassificationTask):
+    """
+    A task for training an image-to-language model.
+    """
+
+    def __init__(self, model, optimizer, **kwargs):
+        super().__init__(model, optimizer, **kwargs)
+
+    def metrics(self, output, target):
+        # acc = FM.accuracy(output.softmax(dim=-1), target)
+        # return {'accuracy': acc}
+        return {}
+
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
+        output = self.model(**batch)
+        loss = output.loss
+        self.log_lr(on_step=True)
+        metrics = self.metrics(output, batch['text'])
+        metrics['loss'] = loss
+        self.log_dict({f'{k}/train': v for k, v in metrics.items()},
+                      prog_bar=True, on_epoch=True, on_step=True)
+        if self.use_sam:
+            eps_w = self.sam_step(loss)
+            loss_w_sam = self.model(**batch).loss
+            # revert eps_w
+            torch._foreach_sub_(list(self.parameters()), eps_w)
+            self.manual_step(loss_w_sam)
+        return loss
+
+    def evaluation_step(self, batch, batch_idx):
+        model = getattr(self, '_model_ema', self.model)
+        output = model(**batch)
+        metrics = self.metrics(output, batch['text'])
+        metrics['loss'] = output.loss
+        return metrics

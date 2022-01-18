@@ -49,33 +49,46 @@ class CCSE(VisionDataset):
 
 class CC12M(Dataset):
     def __init__(self, transform=None, label_transform=None,
-                 tsv_path='/home/labuser/Datasets/cc12m/cc12m.tsv',
-                 path='/home/labuser/Datasets/cc12m/training'):
+                 tsv_path='/home/ehoffer/Datasets/cc12m/cc12m.tsv',
+                 sample_csv='/home/ehoffer/Datasets/cc12m/10M.csv',
+                 path='/home/ehoffer/Datasets/cc12m/training',
+                 return_dict=True):
         self.path = path
         self.transform = transform
         self.label_transform = label_transform
+        self.sample_csv = sample_csv
+        self.return_dict = return_dict
+        if sample_csv is not None:
+            self.samples_idxs = pd.read_csv(self.sample_csv, header=None)[0].tolist()
 
         self.data = pd.read_table(tsv_path, index_col=False,
                                   names=['url', 'caption'], usecols=['caption'])
 
-        # self.data = next(iter(data_iter))
+    def __len__(self) -> int:
+        return len(self.data) if self.samples_idxs is None \
+            else len(self.samples_idxs)
 
     def image_filename(self, i):
         return f'{self.path}/{i:08d}.jpg'
 
     def show_image(self, num):
         img = Image.open(self.image_filename(num))
-        print(self.data['caption'][num])
         img.show()
 
     def __getitem__(self, index):
+        if self.samples_idxs is not None:
+            index = self.samples_idxs[index]
         caption = self.data['caption'][index]
         img = Image.open(self.image_filename(index))
+        img = img.convert('RGB')
         if self.transform is not None:
             img = self.transform(img)
         if self.label_transform is not None:
             caption = self.label_transform(caption)
-        return img, caption
+        if self.return_dict:
+            return {'image': img, 'text': caption}
+        else:
+            return img, caption
 
 
 class CC5Ms(Dataset):
