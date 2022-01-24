@@ -14,9 +14,15 @@ class TokenizeDataset(object):
 
 
 class TokenizeString(object):
-    def __init__(self, tokenizer, tokenizer_args={}):
+    def __init__(self, tokenizer, tokenizer_args={}, add_bos=False, add_eos=False):
         self.tokenizer = tokenizer
         self.tokenizer_args = tokenizer_args
+        self.add_bos = add_bos
+        self.add_eos = add_eos
 
     def __call__(self, text):
+        if self.add_bos:
+            text = self.tokenizer.bos_token + text
+        if self.add_eos:
+            text = text + self.tokenizer.eos_token
         return self.tokenizer(text, **self.tokenizer_args)

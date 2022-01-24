@@ -114,11 +114,22 @@ class ImageToTextTask(ClassificationTask):
         # return {'accuracy': acc}
         return {}
 
+    def _prepare_batch(self, batch, pad_token_id=0):
+        text = batch.pop('text')
+        labels = text.input_ids.clone()
+        input_ids = text.input_ids
+        labels[labels == pad_token_id] = -100
+        input_ids[input_ids == pad_token_id] = 0
+        batch['labels'] = labels
+        batch['input_ids'] = input_ids
+        return batch
+
     def training_step(self, batch, batch_idx, optimizer_idx=None):
+        batch = self._prepare_batch(batch)
         output = self.model(**batch)
         loss = output.loss
         self.log_lr(on_step=True)
-        metrics = self.metrics(output, batch['text'])
+        metrics = self.metrics(output, batch)
         metrics['loss'] = loss
         self.log_dict({f'{k}/train': v for k, v in metrics.items()},
                       prog_bar=True, on_epoch=True, on_step=True)
@@ -131,8 +142,9 @@ class ImageToTextTask(ClassificationTask):
         return loss
 
     def evaluation_step(self, batch, batch_idx):
+        batch = self._prepare_batch(batch)
         model = getattr(self, '_model_ema', self.model)
         output = model(**batch)
-        metrics = self.metrics(output, batch['text'])
+        metrics = self.metrics(output, batch)
         metrics['loss'] = output.loss
         return metrics
