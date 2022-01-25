@@ -1,19 +1,21 @@
 # --------- pytorch --------- #
-torch>=1.9
-torchvision>=0.10.0
-pytorch-lightning>=1.4.0
-torchmetrics>=0.3.2
+torch
+torchvision
+pytorch-lightning
+torchmetrics
+
+# --------- huggingface --------- #
+transformers
+datasets
 
 # --------- hydra --------- #
-hydra-core==1.1.0
-hydra-colorlog==1.1.0
-hydra-optuna-sweeper==1.1.0
-# hydra-ax-sweeper==1.1.0
-# hydra-ray-launcher==0.1.2
-# hydra-submitit-launcher==1.1.0
+hydra-core
+hydra-colorlog
+hydra-optuna-sweeper
 
 # --------- loggers --------- #
-# wandb>=0.10.30
+wandb
+tensorboard
 # neptune-client
 # mlflow
 # comet-ml
@@ -27,6 +29,7 @@ flake8
 
 # --------- others --------- #
 jupyterlab
+numpy
 python-dotenv
 rich
 pytest

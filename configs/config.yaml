@@ -28,7 +28,7 @@ subname: ${hydra.job.num}
 work_dir: ${hydra:runtime.cwd}
 
 # path to folder with data
-data_dir: ~/Datasets
+data_dir: /home/${oc.env:USER}/Datasets
 
 # use `python run.py debug=true` for easy debugging!
 # this will run 1 train, val and test loop with only 1 batch
@@ -45,4 +45,8 @@ ignore_warnings: True
 # global aliases for easy configuration
 batch_size: 64
 eval_batch_size: ${batch_size}
+num_workers: 8
+eval_num_workers: ${num_workers}
+imagenet_size: 1281167
+cifar_size: 50000
 resume: null

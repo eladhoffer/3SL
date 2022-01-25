@@ -1,10 +1,19 @@
 import dotenv
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 # load environment variables from `.env` file if it exists
 # recursively searches for `.env` in all folders starting from work dir
 dotenv.load_dotenv(override=True)
+
+OmegaConf.register_new_resolver(
+    "training_steps", lambda dataset_size, batch_size, epochs:
+    (dataset_size // batch_size) * epochs
+)
+
+OmegaConf.register_new_resolver(
+    "mul", lambda x, y: x * y
+)
 
 
 @hydra.main(config_path="configs/", config_name="config.yaml")

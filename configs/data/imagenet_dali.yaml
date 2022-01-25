@@ -1,19 +1,19 @@
 _target_: src.data.DataModule
 train:
-  dataset: /home/ehoffer/Datasets/imagenet/train
+  dataset: ${data_dir}/imagenet/train
   loader:
     _target_: src.data.loaders.dali.imagenet_loader
-    batch_size: 64
-    num_workers: 4
+    batch_size: ${batch_size}
+    num_workers: ${num_workers}
     drop_last: true
-    cpu: false
-    image_dtype: half
+    cpu: true
+    image_dtype: float
 val:
-  dataset: /home/ehoffer/Datasets/imagenet/val
+  dataset: ${data_dir}/imagenet/val
   loader:
     _target_: src.data.loaders.dali.imagenet_loader
-    batch_size: 64
-    num_workers: 4
+    batch_size: ${eval_batch_size}
+    num_workers: ${eval_num_workers}
     drop_last: false
-    cpu: false
-    image_dtype: half
+    cpu: true
+    image_dtype: float

@@ -20,7 +20,7 @@ train:
     batch_size: ${batch_size}
     shuffle: true
     drop_last: true
-    num_workers: 8
+    num_workers: ${num_workers}
     pin_memory: true    
 val:
   dataset:
@@ -37,8 +37,8 @@ val:
         - _target_: src.data.transforms.ToTensor
         - ${data.normalize}
   loader:
-    batch_size: ${batch_size}
+    batch_size: ${eval_batch_size}
     shuffle: false
     drop_last: false
-    num_workers: 8
+    num_workers: ${eval_num_workers}
     pin_memory: true    
