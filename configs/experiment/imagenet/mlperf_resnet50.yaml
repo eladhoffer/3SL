@@ -6,7 +6,7 @@
 defaults:
   - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
   - override /task: default.yaml
-  - override /data: imagenet_dali.yaml
+  - override /data: imagenet.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
 
@@ -16,7 +16,8 @@ defaults:
 seed: 12345
 batch_size: 64
 num_gpus: 4
-global_batch_size: ${mul:${batch_size},${num_gpus}}
+accumulate_grad_batches: 8
+global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
 resume: null
 epochs: 40
 warmup_epochs: 5
@@ -26,6 +27,8 @@ trainer:
   gpus: ${num_gpus}
   precision: 16
   benchmark: true
+  sync_batchnorm: true
+  accumulate_grad_batches: ${accumulate_grad_batches}
 
 data:
   train:
@@ -34,17 +37,17 @@ data:
   val:
     loader:
       batch_size: ${batch_size}
+
 task:
   _target_: src.tasks.supervised.ClassificationTask
   model:
     _target_: torchvision.models.resnet50
-    zero_init_residual: true
   label_smoothing: 0.1
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
       _target_: src.optim.lars.LARS
-      lr: 1.0
+      lr: 8.5
       momentum: 0.9
       weight_decay: 0.0002
       nesterov: false
@@ -56,7 +59,8 @@ task:
           exclude: true
       - filter:
           _target_: src.optim.filter.OnlyBiasBN
-        skip_scale: true          
+        skip_scale: true
+        weight_decay: 0.0         
     lr_scheduler:
       _target_: src.optim.scheduler.PolynomialWarmUpDecay
       lr: ${task.optimizer.optimizer.lr}

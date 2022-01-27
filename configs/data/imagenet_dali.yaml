@@ -8,6 +8,7 @@ train:
     drop_last: true
     cpu: true
     image_dtype: float
+    is_training: true
 val:
   dataset: ${data_dir}/imagenet/val
   loader:
@@ -17,3 +18,5 @@ val:
     drop_last: false
     cpu: true
     image_dtype: float
+    is_training: false
+test: null
