@@ -3,7 +3,7 @@
 # to execute this experiment run:
 # python run.py experiment=fixmatch_cifar10
 defaults:
-  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
   - override /data: cc12m_text.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
@@ -12,27 +12,34 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
+batch_size: 32
+num_gpus: 6
+accumulate_grad_batches: 8
 resume: null
+epochs: 5
+warmup_epochs: 0.1
+global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
 
 trainer:
   min_epochs: 1
-  max_steps: 50000
-  max_epochs: ${trainer.max_steps}
+  max_epochs: ${epochs}
   benchmark: false
-  gpus: [0]
+  gpus: ${num_gpus}
   precision: 16
   val_check_interval: 1000
+  sync_batchnorm: true
+  accumulate_grad_batches: ${accumulate_grad_batches}
 
 data:
   train:
     loader:
-      batch_size: 32
-      num_workers: 4
+      batch_size: ${batch_size}
+      num_workers: 8
       pin_memory: false
   val:
     loader:
-      batch_size: 32
-      num_workers: 4
+      batch_size: ${batch_size}
+      num_workers: 8
       pin_memory: false
 
 task:
@@ -40,7 +47,7 @@ task:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
       _target_: src.optim.lars.LARS
-      lr: 1.0
+      lr: 8.0
       momentum: 0.9
       weight_decay: 0.0002
       nesterov: false
@@ -52,12 +59,13 @@ task:
           exclude: true
       - filter:
           _target_: src.optim.filter.OnlyBiasBN
-        skip_scale: true          
+        skip_scale: true
+        weight_decay: 0.0         
     lr_scheduler:
       _target_: src.optim.scheduler.PolynomialWarmUpDecay
       lr: ${task.optimizer.optimizer.lr}
-      warmup_steps: 1000
-      total_steps: ${trainer.max_steps}
+      warmup_steps: ${training_steps:${imagenet_size},${global_batch_size},${warmup_epochs}}
+      total_steps: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
       init_lr: 0.
       final_lr: 0.0001
       decay_power: 2.0

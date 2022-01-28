@@ -12,11 +12,12 @@ import numpy as np
 
 
 class CCSE(VisionDataset):
-    def __init__(self, transform=None, label_transform=None,
-                 sample_csv='/home/labuser/Datasets/cc12m/500K.csv',
-                 image_dir='/home/labuser/Datasets/cc12m/training',
-                 embedding_dir='/home/labuser/Datasets/cc12m/sentence_embedding_mpnet_base',
-                 embedding_file='/home/labuser/Datasets/cc12m/all_embeddings.npy'):
+    def __init__(self,
+                 image_dir,
+                 sample_csv,
+                 embedding_dir=None,
+                 embedding_file=None,
+                 transform=None, label_transform=None):
         self.transform = transform
         self.label_transform = label_transform
         self.sample_csv = sample_csv
@@ -26,6 +27,7 @@ class CCSE(VisionDataset):
         if self.embedding_file is not None and os.path.isfile(self.embedding_file):
             self.embeddings = np.load(embedding_file, mmap_mode='r')
         else:
+            assert os.path.isdir(self.embedding_dir)
             self.embeddings = None
         self.samples_idxs = pd.read_csv(self.sample_csv, header=None)[0].tolist()
 
@@ -92,9 +94,8 @@ class CC12M(Dataset):
 
 
 class CC5Ms(Dataset):
-    def __init__(self, transform=None, label_transform=None,
+    def __init__(self, path, transform=None, label_transform=None,
                  split='train',
-                 path='/home/labuser/Datasets/cc12m/',
                  training_filenames=('cc12m_small_5M_images.npy', 'cc12m_small_5M_embeddings.npy'),
                  eval_filenames=('cc12m_small_5K_images.npy', 'cc12m_small_5K_embeddings.npy')):
         if split == 'train':
@@ -121,9 +122,8 @@ class CC5Ms(Dataset):
 
 
 class CC10Ms(CC5Ms):
-    def __init__(self, transform=None, label_transform=None,
+    def __init__(self, path, transform=None, label_transform=None,
                  split='train',
-                 path='/home/labuser/Datasets/cc12m/',
                  training_filenames=('cc12m_small_10M_images.npy',
                                      'cc12m_small_10M_embeddings.npy'),
                  eval_filenames=('cc12m_small_5K_images.npy', 'cc12m_small_5K_embeddings.npy')):

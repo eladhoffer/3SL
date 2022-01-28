@@ -12,56 +12,71 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
+batch_size: 64
+num_gpus: 4
+accumulate_grad_batches: 8
 resume: null
+epochs: 5
+warmup_epochs: 0.1
+global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
 
 trainer:
   min_epochs: 1
-  max_steps: 500000
-  max_epochs: ${trainer.max_steps}
+  max_epochs: ${epochs}
   benchmark: true
+  gpus: [0,2,3,4]
   precision: 16
-  val_check_interval: 1000
+  val_check_interval: 10000
+  sync_batchnorm: true
+  accumulate_grad_batches: ${accumulate_grad_batches}
 
 data:
   train:
     loader:
-      batch_size: 128
-      num_workers: 0
+      batch_size: ${batch_size}
+      num_workers: 8
+      pin_memory: false
   val:
     loader:
-      batch_size: 128
-      num_workers: 0
+      batch_size: ${batch_size}
+      num_workers: 8
+      pin_memory: false
+
 task:
   _target_: src.tasks.supervised.SupervisedEmbeddingTask
   model:
-    _target_: src.models.resnet.resnet
-    dataset: imagenet
+    _target_: torchvision.models.resnet50
     num_classes: 768
-    depth: 50
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
-      _target_: torch.optim.AdamW
-      betas:
-        - 0.9
-        - 0.98
-      eps: 1e-6
-      weight_decay: 0.01
-      lr: 1e-3
+      _target_: src.optim.lars.LARS
+      lr: 8.5
+      momentum: 0.9
+      weight_decay: 0.0002
+      nesterov: false
+      trust_coefficient: 0.001
+      eps: 1e-8
+    optimizer_filters:
+      - filter:
+          _target_: src.optim.filter.OnlyBiasBN
+          exclude: true
+      - filter:
+          _target_: src.optim.filter.OnlyBiasBN
+        skip_scale: true
+        weight_decay: 0.0         
     lr_scheduler:
-      _target_: src.optim.scheduler.LinearWarmUpDecay
-      lr: 1e-3
-      init_lr: 1e-5
-      warmup_steps: 5000
-      total_steps: ${trainer.max_steps}
+      _target_: src.optim.scheduler.PolynomialWarmUpDecay
+      lr: ${task.optimizer.optimizer.lr}
+      warmup_steps: ${training_steps:${imagenet_size},${global_batch_size},${warmup_epochs}}
+      total_steps: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
+      init_lr: 0.
+      final_lr: 0.0001
+      decay_power: 2.0
     interval: step
   criterion:
-    _target_: lightly.loss.ntx_ent_loss.NTXentLoss
-    temperature: 0.5
-    memory_bank_size: 32768
-  normalize_target:
-    _target_: torch.nn.BatchNorm1d
-    num_features: 768
+    _target_: torch.nn.MSELoss    
 callbacks:
   model_checkpoint:
-    monitor: "loss/val"     
+    monitor: "loss/val"
+    mode: "min"    

@@ -4,7 +4,6 @@ model:
   image_model:
     _target_: torchvision.models.resnet50
     pretrained: false
-    zero_init_residual: true    
   text_model:
     _target_: transformers.T5ForConditionalGeneration.from_pretrained
     pretrained_model_name_or_path: "t5-small"
