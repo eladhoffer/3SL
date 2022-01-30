@@ -4,10 +4,10 @@
 # python run.py experiment=fixmatch_cifar10
 defaults:
   - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
-  - override /data: cc12m.yaml
+  - override /data: cc12m_text.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
-  - override /task: default.yaml
+  - override /task: image_from_text.yaml
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
@@ -23,35 +23,34 @@ global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batc
 trainer:
   min_epochs: 1
   max_epochs: ${epochs}
-  benchmark: true
+  benchmark: false
   gpus: ${num_gpus}
   precision: 16
-  val_check_interval: 10000
+  val_check_interval: 1000
   sync_batchnorm: true
   accumulate_grad_batches: ${accumulate_grad_batches}
 
 data:
+  tokenizer:
+    _target_: transformers.AutoTokenizer.from_pretrained
+    pretrained_model_name_or_path: sentence-transformers/all-mpnet-base-v2
   train:
     loader:
       batch_size: ${batch_size}
-      num_workers: 16
+      num_workers: 4
       pin_memory: false
   val:
     loader:
       batch_size: ${batch_size}
-      num_workers: 16
+      num_workers: 4
       pin_memory: false
 
 task:
-  _target_: src.tasks.supervised.SupervisedEmbeddingTask
-  model:
-    _target_: torchvision.models.resnet50
-    num_classes: 768
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
       _target_: src.optim.lars.LARS
-      lr: 8.5
+      lr: 8.0
       momentum: 0.9
       weight_decay: 0.0002
       nesterov: false
@@ -74,9 +73,11 @@ task:
       final_lr: 0.0001
       decay_power: 2.0
     interval: step
-  criterion:
-    _target_: torch.nn.MSELoss    
+
 callbacks:
   model_checkpoint:
     monitor: "loss/val"
-    mode: "min"    
+    mode: "min"
+    every_n_train_steps: 1000
+    save_top_k: 2  
+

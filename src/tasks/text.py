@@ -6,6 +6,7 @@ from src.utils_pt.cross_entropy import cross_entropy
 import torch
 import torch.nn as nn
 import math
+from hydra.utils import instantiate
 
 
 class MaskedLanguageModelTask(ClassificationTask):
@@ -147,4 +148,70 @@ class ImageToTextTask(ClassificationTask):
         output = model(**batch)
         metrics = self.metrics(output, batch)
         metrics['loss'] = output.loss
+        return metrics
+
+
+def mean_pooling(model_output, attention_mask):
+    # First element of model_output contains all token embeddings
+    token_embeddings = model_output[0]
+    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+
+class ImageFromTextTask(ClassificationTask):
+    """
+    A task for training an image-to-language model.
+    """
+
+    def __init__(self, model, text_model, optimizer, **kwargs):
+        super().__init__(model, optimizer, **kwargs)
+        self.criterion = nn.MSELoss()
+        self.text_model = instantiate(text_model)
+        for p in self.text_model.parameters():
+            p.requires_grad = False
+
+    def metrics(self, output, target):
+        # acc = FM.accuracy(output.softmax(dim=-1), target)
+        # return {'accuracy': acc}
+        return {}
+
+    def text_embedding(self, **text_inputs):
+        # Compute token embeddings
+        with torch.no_grad():
+            # # encoded_input = encoded_input.to(device=device, dtype=dtype)
+            model_output = self.text_model(**text_inputs)
+            # # Perform pooling
+            # sentence_embeddings = mean_pooling(model_output, text_inputs['attention_mask'])
+
+            sentence_embeddings = model_output['pooler_output']
+            sentence_embeddings = F.layer_norm(sentence_embeddings, (sentence_embeddings.size(-1),))
+        return sentence_embeddings
+
+    def loss(self, output, target):
+        return self.criterion(output, target).mean()
+
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
+        target = self.text_embedding(**batch['text'])
+        output = self.model(batch['image'])
+        loss = self.loss(output, target)
+        self.log_lr(on_step=True)
+        metrics = self.metrics(output, batch)
+        metrics['loss'] = loss
+        self.log_dict({f'{k}/train': v for k, v in metrics.items()},
+                      prog_bar=True, on_epoch=True, on_step=True)
+        if self.use_sam:
+            eps_w = self.sam_step(loss)
+            loss_w_sam = self.model(**batch).loss
+            # revert eps_w
+            torch._foreach_sub_(list(self.parameters()), eps_w)
+            self.manual_step(loss_w_sam)
+        return loss
+
+    def evaluation_step(self, batch, batch_idx):
+        target = self.text_embedding(**batch['text'])
+        model = getattr(self, '_model_ema', self.model)
+        output = model(batch['image'])
+        loss = self.loss(output, target)
+        metrics = self.metrics(output, batch)
+        metrics['loss'] = loss
         return metrics
