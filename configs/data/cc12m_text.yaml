@@ -21,6 +21,7 @@ train:
     tsv_path: ${data_dir}/cc12m/cc12m.tsv
     sample_csv: ${data_dir}/cc12m/10M.csv
     path: ${data_dir}/cc12m/training
+    cache_dir: ${data_dir}/cc12m/tokenized
     transform:
       _target_: src.data.transforms.Compose
       transforms:
@@ -46,6 +47,7 @@ val:
     tsv_path: ${data_dir}/cc12m/cc12m.tsv
     sample_csv: ${data_dir}/cc12m/5K.csv
     path: ${data_dir}/cc12m/training
+    cache_dir: ${data_dir}/cc12m/tokenized
     transform:
       _target_: src.data.transforms.Compose
       transforms:

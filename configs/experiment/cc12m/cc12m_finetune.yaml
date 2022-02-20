@@ -4,7 +4,7 @@
 # python run.py experiment=fixmatch_cifar10
 defaults:
   - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
-  - override /data: imagenet.yaml
+  - override /data: imagenet_dali.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
 
@@ -19,6 +19,9 @@ trainer:
   max_steps: 50000
   max_epochs: ${trainer.max_steps}
   benchmark: true
+  precision: 16
+  accumulate_grad_batches: 16
+  gpus: 4
 
 data:
   train:
@@ -26,7 +29,7 @@ data:
       batch_size: 64
   val:
     loader:
-      batch_size: 128
+      batch_size: 64
 
 task:
   _target_: src.tasks.supervised.FinetuneTask
@@ -40,7 +43,7 @@ task:
     regime:
       - epoch: 0
         optimizer: SGD
-        lr: 1e-1
+        lr: 1e-3
         momentum: 0.9
         lr_scheduler:
           name: CosineAnnealingLR
@@ -51,4 +54,4 @@ task:
     _target_: torch.nn.Linear
     in_features: 2048
     out_features: 1000
-  checkpoint_path: /home/ehoffer/PyTorch/3SL/results/cc12m_imagenet_mse/checkpoints/last.ckpt
+  checkpoint_path: /home/ehoffer/PyTorch/3SL/results/cc12m_lars/finetune_fc/checkpoints/last.ckpt
