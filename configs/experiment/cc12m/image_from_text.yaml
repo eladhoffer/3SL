@@ -13,8 +13,8 @@ defaults:
 
 seed: 12345
 batch_size: 32
-num_gpus: 6
-accumulate_grad_batches: 8
+num_gpus: 4
+accumulate_grad_batches: 16
 resume: null
 epochs: 5
 warmup_epochs: 0.1
@@ -24,7 +24,7 @@ trainer:
   min_epochs: 1
   max_epochs: ${epochs}
   benchmark: true
-  gpus: 6
+  gpus: 4
   precision: 16
   val_check_interval: 10000
   sync_batchnorm: false
@@ -37,12 +37,12 @@ data:
   train:
     loader:
       batch_size: ${batch_size}
-      num_workers: 8
+      num_workers: 4
       pin_memory: false
   val:
     loader:
       batch_size: ${batch_size}
-      num_workers: 8
+      num_workers: 4
       pin_memory: false
 
 task:

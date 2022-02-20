@@ -18,8 +18,9 @@ train:
   dataset:
     _target_: src.data.datasets.cc12m.CC12MTokenized
     tokenizer: ${data.tokenizer}
-    tsv_path: /home/ehoffer/Datasets/cc12m/cc12m.tsv
-    sample_csv: /home/ehoffer/Datasets/cc12m/10M.csv
+    tsv_path: ${data_dir}/cc12m/cc12m.tsv
+    sample_csv: ${data_dir}/cc12m/10M.csv
+    path: ${data_dir}/cc12m/training
     transform:
       _target_: src.data.transforms.Compose
       transforms:
@@ -42,8 +43,9 @@ val:
   dataset:
     _target_: src.data.datasets.cc12m.CC12MTokenized
     tokenizer: ${data.tokenizer}
-    tsv_path: /home/ehoffer/Datasets/cc12m/cc12m.tsv
-    sample_csv: /home/ehoffer/Datasets/cc12m/5K.csv
+    tsv_path: ${data_dir}/cc12m/cc12m.tsv
+    sample_csv: ${data_dir}/cc12m/5K.csv
+    path: ${data_dir}/cc12m/training
     transform:
       _target_: src.data.transforms.Compose
       transforms:

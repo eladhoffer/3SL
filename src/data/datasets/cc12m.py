@@ -51,9 +51,9 @@ class CCSE(VisionDataset):
 
 class CC12M(Dataset):
     def __init__(self, transform=None, label_transform=None,
-                 tsv_path='/home/ehoffer/Datasets/cc12m/cc12m.tsv',
-                 sample_csv='/home/ehoffer/Datasets/cc12m/10M.csv',
-                 path='/home/ehoffer/Datasets/cc12m/training',
+                 tsv_path='cc12m.tsv',
+                 sample_csv='10M.csv',
+                 path='training',
                  return_dict=True):
         self.path = path
         self.transform = transform
@@ -94,11 +94,11 @@ class CC12M(Dataset):
 
 class CC12MTokenized(CC12M):
     def __init__(self, tokenizer, transform=None, label_transform=None,
-                 tsv_path='/home/ehoffer/Datasets/cc12m/cc12m.tsv',
-                 sample_csv='/home/ehoffer/Datasets/cc12m/10M.csv',
-                 path='/home/ehoffer/Datasets/cc12m/training',
+                 tsv_path='cc12m.tsv',
+                 sample_csv='10M.csv',
+                 path='training',
                  max_length=128,
-                 cache_dir='/home/ehoffer/Datasets/cc12m/tokenized'):
+                 cache_dir='tokenized'):
         cache_file = f"{cache_dir}/cc12m_tokenized.arrow"
         self.tokenizer = tokenizer
         self.max_length = max_length
