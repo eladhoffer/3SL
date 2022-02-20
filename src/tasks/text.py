@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import math
 from hydra.utils import instantiate
+from time import time
 
 
 class MaskedLanguageModelTask(ClassificationTask):
@@ -72,8 +73,10 @@ class MaskedLanguageModelTask(ClassificationTask):
 
     def training_step(self, batch, batch_idx):
         self.model.train()
+        step_time0 = time()
         output = self.step(batch)
         self.log_lr(on_step=True)
+        output = {'step_time': time() - step_time0}
         self.log_metrics(output, phase='train',
                          prog_bar=True, on_step=True)
         if self.use_sam:
@@ -184,18 +187,27 @@ class ImageFromTextTask(ClassificationTask):
             # sentence_embeddings = mean_pooling(model_output, text_inputs['attention_mask'])
 
             sentence_embeddings = model_output['pooler_output']
-            sentence_embeddings = F.layer_norm(sentence_embeddings, (sentence_embeddings.size(-1),))
+            sentence_embeddings = F.layer_norm(
+                sentence_embeddings, (sentence_embeddings.size(-1),))
         return sentence_embeddings
 
     def loss(self, output, target):
         return self.criterion(output, target).mean()
 
-    def training_step(self, batch, batch_idx, optimizer_idx=None):
-        target = self.text_embedding(**batch['text'])
+    def training_step(self, batch):
+        step_time = time()
         output = self.model(batch['image'])
+        model_step_time = time() - step_time
+        step_time = time()
+        target = self.text_embedding(**batch['text'])
+        text_step_time = time() - step_time
         loss = self.loss(output, target)
         self.log_lr(on_step=True)
+        output = {'step_time': time() - step_time}
         metrics = self.metrics(output, batch)
+        metrics['text_step_time'] = text_step_time
+        metrics['model_step_time'] = model_step_time
+
         metrics['loss'] = loss
         self.log_dict({f'{k}/train': v for k, v in metrics.items()},
                       prog_bar=True, on_epoch=True, on_step=True)

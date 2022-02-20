@@ -12,8 +12,8 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-batch_size: 64
-num_gpus: 4
+batch_size: 32
+num_gpus: 6
 accumulate_grad_batches: 8
 resume: null
 epochs: 5
@@ -23,11 +23,11 @@ global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batc
 trainer:
   min_epochs: 1
   max_epochs: ${epochs}
-  benchmark: false
-  gpus: ${num_gpus}
+  benchmark: true
+  gpus: 6
   precision: 16
-  val_check_interval: 1000
-  sync_batchnorm: true
+  val_check_interval: 10000
+  sync_batchnorm: false
   accumulate_grad_batches: ${accumulate_grad_batches}
 
 data:
@@ -37,12 +37,12 @@ data:
   train:
     loader:
       batch_size: ${batch_size}
-      num_workers: 4
+      num_workers: 8
       pin_memory: false
   val:
     loader:
       batch_size: ${batch_size}
-      num_workers: 4
+      num_workers: 8
       pin_memory: false
 
 task:

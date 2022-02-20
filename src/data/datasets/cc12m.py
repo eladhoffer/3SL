@@ -5,10 +5,11 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 import torchvision
 from torchvision.transforms.transforms import RandomCrop
-from torchvision.datasets import VisionDataset, CIFAR10
-from torchvision.datasets.folder import is_image_file
+from torchvision.datasets import VisionDataset
+from torchvision.datasets.folder import is_image_file, default_loader
 import os
 import numpy as np
+from datasets import Dataset as dset
 
 
 class CCSE(VisionDataset):
@@ -36,8 +37,7 @@ class CCSE(VisionDataset):
 
     def __getitem__(self, i):
         index = self.samples_idxs[i]
-        image = Image.open(os.path.join(self.image_dir, f'{index:08d}.jpg'))
-        image = image.convert('RGB')
+        image = default_loader(os.path.join(self.image_dir, f'{index:08d}.jpg'))
         if self.embeddings is None:
             embedding = torch.load(os.path.join(self.embedding_dir, f'{index:08d}.pt'))
         else:
@@ -81,8 +81,7 @@ class CC12M(Dataset):
         if self.samples_idxs is not None:
             index = self.samples_idxs[index]
         caption = self.data['caption'][index]
-        img = Image.open(self.image_filename(index))
-        img = img.convert('RGB')
+        img = default_loader(self.image_filename(index))
         if self.transform is not None:
             img = self.transform(img)
         if self.label_transform is not None:
@@ -91,6 +90,54 @@ class CC12M(Dataset):
             return {'image': img, 'text': caption}
         else:
             return img, caption
+
+
+class CC12MTokenized(CC12M):
+    def __init__(self, tokenizer, transform=None, label_transform=None,
+                 tsv_path='/home/ehoffer/Datasets/cc12m/cc12m.tsv',
+                 sample_csv='/home/ehoffer/Datasets/cc12m/10M.csv',
+                 path='/home/ehoffer/Datasets/cc12m/training',
+                 max_length=128,
+                 cache_dir='/home/ehoffer/Datasets/cc12m/tokenized'):
+        cache_file = f"{cache_dir}/cc12m_tokenized.arrow"
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.transform = transform
+        self.label_transform = label_transform
+        self.path = path
+        tokenizer_args = {"truncation": True,
+                          "max_length": max_length}
+
+        def _tokenize(sample, idx):
+            output = self.tokenizer(sample['text'].split('\t')[1], **tokenizer_args)
+            output['idx'] = idx
+            return output
+        if os.path.isfile(cache_file):
+            self.data = dset.from_file(cache_file)
+        else:
+            self.data = dset.from_text(tsv_path)
+            self.data = self.data.map(_tokenize, remove_columns=['text'],
+                                      with_indices=True, num_proc=32,
+                                      cache_file_name=cache_file)
+        self.data.set_format(type='torch', columns=['idx', 'input_ids', 'attention_mask'])
+        if sample_csv is not None:
+            samples_idxs = pd.read_csv(sample_csv, header=None)[0].tolist()
+            self.data = self.data.select(samples_idxs)
+
+    def __getitem__(self, index):
+        sample = self.data[index]
+        caption = {'input_ids': sample['input_ids'],
+                   'attention_mask': sample['attention_mask']}
+        img_idx = sample['idx']
+        img = default_loader(self.image_filename(img_idx))
+        if self.transform is not None:
+            img = self.transform(img)
+        if self.label_transform is not None:
+            caption = self.label_transform(caption)
+        return {'image': img, 'text': caption}
+
+    def __len__(self):
+        return len(self.data)
 
 
 class CC5Ms(Dataset):
