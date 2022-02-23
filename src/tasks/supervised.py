@@ -1,11 +1,13 @@
 from typing import OrderedDict
 from torchmetrics import functional as FM
 import torch.nn.functional as F
-from src.utils_pt.misc import calibrate_bn
+from src.utils_pt.misc import calibrate_bn, no_bn_update
 from src.tasks.task import Task
+from src.models.modules.surrogate_norm import SNorm
 from src.models.modules.utils import FrozenModule, remove_module
 import torch
 from hydra.utils import instantiate
+from math import log
 
 
 class ClassificationTask(Task):
@@ -175,3 +177,96 @@ class FinetuneTask(ClassificationTask):
                 if isinstance(m, torch.nn.BatchNorm2d):
                     m.eval()
         return super().training_step(batch, batch_idx, optimizer_idx=optimizer_idx)
+
+
+class ClassificationWNoiseTask(ClassificationTask):
+    def __init__(self, model, optimizer, label_smoothing=0, entropy_eta=1e-4, surrogate_norm=False,
+                 noise_example=True, calibrate_bn_on_eval=False, **kwargs):
+        super().__init__(model, optimizer, label_smoothing, calibrate_bn_on_eval, **kwargs)
+        self.noise_example = noise_example
+        self.entropy_eta = entropy_eta
+        if surrogate_norm:
+            self.noise_example = True
+            self.model = SNorm.convert_snorm(self.model)
+
+    @staticmethod
+    def noise_entropy(model, input_example, noise_output=None):
+        if noise_output is None:
+            noise = torch.randn_like(input_example)
+            with no_bn_update(model) as model:
+                noise_output = model(noise)
+        noise_entropy = -(F.softmax(noise_output, dim=1) *
+                          F.log_softmax(noise_output, dim=1)).sum(dim=1).mean()
+        return noise_entropy
+
+    def metrics(self, output, target, input_example=None):
+        _, output = self._remove_noise_output(output)
+        metrics = super().metrics(output, target)
+        with torch.no_grad():
+            noise_entropy = self.noise_entropy(self.model, input_example)
+        metrics['noise_entropy'] = noise_entropy
+        return metrics
+
+    def loss(self, output, target, input_example=None):
+        noise_output, output = self._remove_noise_output(output)
+        loss = super().loss(output, target)
+        if self.training and self.entropy_eta > 0:
+            num_classes = output.size(-1)
+            # norm_margin = F.mse_loss(noise_output, output.mean(dim=0).detach())
+            noise_entropy = self.noise_entropy(self.model, input_example,
+                                               noise_output=noise_output)
+            # mean_entropy = -(F.softmax(output, dim=1) *
+            #                  F.log_softmax(output, dim=1)).sum(dim=1).mean()
+            # entropy_margin = (mean_entropy.detach() - noise_entropy).abs()
+            entropy_margin = log(num_classes) - noise_entropy
+            loss += self.entropy_eta * entropy_margin
+        return loss
+
+    def _add_noise_example(self, x):
+        if self.training and self.noise_example:
+            noise = torch.randn(1, *x.shape[1:], device=x.device, dtype=x.dtype)
+            x = torch.cat((noise, x), dim=0)
+        return x
+
+    def _remove_noise_output(self, output):
+        noise_output = None
+        if self.training and self.noise_example:
+            noise_output = output[0].unsqueeze(0)
+            output = output[1:]
+        return noise_output, output
+
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
+        if isinstance(batch, dict):  # drop unlabled
+            batch = batch['labeled']
+        x, y = batch
+        x = self._add_noise_example(x)
+        if self.mixup:
+            self.mixup.sample(x.size(0))
+            x = self.mixup(x)
+        y_hat = self.model(x)
+        loss = self.loss(y_hat, y, input_example=x)
+        self.log_lr(on_step=True)
+        metrics = self.metrics(y_hat, y, input_example=x)
+        metrics['loss'] = loss
+        self.log_dict({f'{k}/train': v for k, v in metrics.items()},
+                      prog_bar=True, on_epoch=True, on_step=True)
+        if self.use_sam:
+            eps_w = self.sam_step(loss)
+            loss_w_sam = self.loss(self.model(x), y)
+            # revert eps_w
+            torch._foreach_sub_(list(self.parameters()), eps_w)
+            self.manual_step(loss_w_sam)
+        return loss
+
+    def evaluation_step(self, batch, batch_idx):
+        model = getattr(self, '_model_ema', self.model)
+        x, y = batch
+        x = self._add_noise_example(x)
+        if self.calibrate_bn_on_eval:
+            with calibrate_bn(model):
+                y_hat = model(x)
+        else:
+            y_hat = model(x)
+        metrics = self.metrics(y_hat, y, input_example=x)
+        metrics['loss'] = self.loss(y_hat, y, input_example=x)
+        return metrics
