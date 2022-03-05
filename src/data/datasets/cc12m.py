@@ -25,23 +25,31 @@ class CCSE(VisionDataset):
         self.image_dir = image_dir
         self.embedding_dir = embedding_dir
         self.embedding_file = embedding_file
-        if self.embedding_file is not None and os.path.isfile(self.embedding_file):
-            self.embeddings = np.load(embedding_file, mmap_mode='r')
+        if self.embedding_file is not None:
+            assert os.path.isfile(self.embedding_file)
+            # self.embeddings = np.load(embedding_file, mmap_mode='r')
         else:
             assert os.path.isdir(self.embedding_dir)
-            self.embeddings = None
-        self.samples_idxs = pd.read_csv(self.sample_csv, header=None)[0].tolist()
+        self.samples_idxs = torch.tensor(pd.read_csv(
+            self.sample_csv, header=None)[0].tolist())
 
     def __len__(self) -> int:
         return len(self.samples_idxs)
 
     def __getitem__(self, i):
         index = self.samples_idxs[i]
-        image = default_loader(os.path.join(self.image_dir, f'{index:08d}.jpg'))
-        if self.embeddings is None:
-            embedding = torch.load(os.path.join(self.embedding_dir, f'{index:08d}.pt'))
+        image = default_loader(os.path.join(
+            self.image_dir, f'{index:08d}.jpg'))
+        if self.embedding_file:
+            embedding = np.load(self.embedding_file, mmap_mode='r')[index]
+            embedding = torch.from_numpy(embedding)
         else:
-            embedding = torch.from_numpy(self.embeddings[index])
+            embedding = torch.load(os.path.join(
+                self.embedding_dir, f'{index:08d}.pt'))
+        # if self.embeddings is None:
+        #     embedding = torch.load(os.path.join(self.embedding_dir, f'{index:08d}.pt'))
+        # else:
+        #     embedding = torch.from_numpy(self.embeddings[index])
         if self.transform is not None:
             image = self.transform(image)
         if self.label_transform is not None:
@@ -61,7 +69,8 @@ class CC12M(Dataset):
         self.sample_csv = sample_csv
         self.return_dict = return_dict
         if sample_csv is not None:
-            self.samples_idxs = pd.read_csv(self.sample_csv, header=None)[0].tolist()
+            self.samples_idxs = pd.read_csv(
+                self.sample_csv, header=None)[0].tolist()
 
         self.data = pd.read_table(tsv_path, index_col=False,
                                   names=['url', 'caption'], usecols=['caption'])
@@ -109,7 +118,8 @@ class CC12MTokenized(CC12M):
                           "max_length": max_length}
 
         def _tokenize(sample, idx):
-            output = self.tokenizer(sample['text'].split('\t')[1], **tokenizer_args)
+            output = self.tokenizer(sample['text'].split('\t')[
+                                    1], **tokenizer_args)
             output['idx'] = idx
             return output
         if os.path.isfile(cache_file):
@@ -119,7 +129,8 @@ class CC12MTokenized(CC12M):
             self.data = self.data.map(_tokenize, remove_columns=['text'],
                                       with_indices=True, num_proc=32,
                                       cache_file_name=cache_file)
-        self.data.set_format(type='torch', columns=['idx', 'input_ids', 'attention_mask'])
+        self.data.set_format(type='torch', columns=[
+                             'idx', 'input_ids', 'attention_mask'])
         if sample_csv is not None:
             samples_idxs = pd.read_csv(sample_csv, header=None)[0].tolist()
             self.data = self.data.select(samples_idxs)
@@ -143,14 +154,17 @@ class CC12MTokenized(CC12M):
 class CC5Ms(Dataset):
     def __init__(self, path, transform=None, label_transform=None,
                  split='train',
-                 training_filenames=('cc12m_small_5M_images.npy', 'cc12m_small_5M_embeddings.npy'),
+                 training_filenames=(
+                     'cc12m_small_5M_images.npy', 'cc12m_small_5M_embeddings.npy'),
                  eval_filenames=('cc12m_small_5K_images.npy', 'cc12m_small_5K_embeddings.npy')):
         if split == 'train':
             self.filenames = training_filenames
         elif split == 'eval':
             self.filenames = eval_filenames
-        self.data = np.load(os.path.join(path, self.filenames[0]), mmap_mode='r')
-        self.embeddings = np.load(os.path.join(path, self.filenames[1]), mmap_mode='r')
+        self.data = np.load(os.path.join(
+            path, self.filenames[0]), mmap_mode='r')
+        self.embeddings = np.load(os.path.join(
+            path, self.filenames[1]), mmap_mode='r')
         self.transform = transform
         self.label_transform = label_transform
         assert self.data.shape[0] == self.embeddings.shape[0]
@@ -174,7 +188,8 @@ class CC10Ms(CC5Ms):
                  training_filenames=('cc12m_small_10M_images.npy',
                                      'cc12m_small_10M_embeddings.npy'),
                  eval_filenames=('cc12m_small_5K_images.npy', 'cc12m_small_5K_embeddings.npy')):
-        super().__init__(transform, label_transform, split, path, training_filenames, eval_filenames)
+        super().__init__(transform, label_transform, split,
+                         path, training_filenames, eval_filenames)
 
 
 class NormalizeEmbeddings:

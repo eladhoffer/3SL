@@ -15,7 +15,8 @@ class NormalizeEmbeddings:
         self.eps = eps
 
     def __call__(self, tensor):
-        return (tensor - self.mean) / (self.std + self.eps)
+        with torch.no_grad():
+            return (tensor - self.mean) / (self.std + self.eps)
 
     def __repr__(self):
         return self.__class__.__name__ + '()'
