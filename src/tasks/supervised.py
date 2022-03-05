@@ -23,7 +23,7 @@ class ClassificationTask(Task):
         return F.cross_entropy(output, target, label_smoothing=self.label_smoothing)
 
     def metrics(self, output, target):
-        acc = FM.accuracy(output.softmax(dim=-1), target)
+        acc = FM.accuracy(output.detach().softmax(dim=-1), target)
         return {'accuracy': acc}
 
     def training_step(self, batch, batch_idx, optimizer_idx=None):
@@ -39,7 +39,7 @@ class ClassificationTask(Task):
         metrics = self.metrics(y_hat, y)
         metrics['loss'] = loss
         self.log_dict({f'{k}/train': v for k, v in metrics.items()},
-                      prog_bar=True, on_epoch=True, on_step=True)
+                      prog_bar=True, on_epoch=False, on_step=True)
         if self.use_sam:
             eps_w = self.sam_step(loss)
             loss_w_sam = self.loss(self.model(x), y)
