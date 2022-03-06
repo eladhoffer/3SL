@@ -12,12 +12,13 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-batch_size: 64
+batch_size: 256
+cc12m_size: 10e6
 num_gpus: 4
-accumulate_grad_batches: 8
+accumulate_grad_batches: 2
 resume: null
 epochs: 5
-warmup_epochs: 0.1
+warmup_epochs: 0.5
 global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
 
 trainer:
@@ -26,20 +27,20 @@ trainer:
   benchmark: true
   gpus: ${num_gpus}
   precision: 16
-  val_check_interval: 10000
-  sync_batchnorm: true
+  val_check_interval: 1000
+  sync_batchnorm: false
   accumulate_grad_batches: ${accumulate_grad_batches}
 
 data:
   train:
     loader:
       batch_size: ${batch_size}
-      num_workers: 16
+      num_workers: 8
       pin_memory: false
   val:
     loader:
       batch_size: ${batch_size}
-      num_workers: 16
+      num_workers: 8
       pin_memory: false
 
 task:
@@ -68,12 +69,16 @@ task:
     lr_scheduler:
       _target_: src.optim.scheduler.PolynomialWarmUpDecay
       lr: ${task.optimizer.optimizer.lr}
-      warmup_steps: ${training_steps:${imagenet_size},${global_batch_size},${warmup_epochs}}
-      total_steps: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
+      warmup_steps: ${training_steps:${cc12m_size},${global_batch_size},${warmup_epochs}}
+      total_steps: ${training_steps:${cc12m_size},${global_batch_size},${epochs}}
       init_lr: 0.
       final_lr: 0.0001
       decay_power: 2.0
     interval: step
+  transform_target:
+    _target_: torch.nn.BatchNorm1d
+    num_features: 768
+    affine: false
   criterion:
     _target_: torch.nn.MSELoss    
 callbacks:
