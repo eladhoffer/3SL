@@ -1,7 +1,7 @@
 from src.tasks.supervised import ClassificationTask
 from lowp import Lowp
 from lowp.functional import truncate_fp8
-from pytorch_lightning.metrics import functional as FM
+from torchmetrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
 from src.tasks.task import Task
