@@ -22,16 +22,6 @@ class LowpClassificationTask(ClassificationTask):
         if self.params_precision == 16:
             self.model = self.model.to(dtype=torch.half)
 
-    def optimizer_step(self, epoch: int = None, batch_idx: int = None, optimizer=None, optimizer_idx: int = None, optimizer_closure=None,
-                       on_tpu: bool = None, using_native_amp: bool = None, using_lbfgs: bool = None) -> None:
-
-        if self.optimizer_samples > 1:
-            state_dict = deepcopy(self.optimizers().state_dict())
-            params = []
-        with Lowp(mode=self.lowp_mode, warn_patched=self.lowp_warn_patched, warn_not_patched=self.lowp_warn_not_patched):
-            super().optimizer_step(epoch, batch_idx, optimizer, optimizer_idx,
-                                   optimizer_closure, on_tpu, using_native_amp, using_lbfgs)
-
     def training_step(self, batch, batch_idx):
         if isinstance(batch, dict):  # drop unlabled
             batch = batch['labeled']
