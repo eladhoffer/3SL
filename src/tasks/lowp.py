@@ -9,11 +9,13 @@ import torch
 from hydra.utils import instantiate
 from copy import deepcopy
 
+
 class LowpClassificationTask(ClassificationTask):
     def __init__(self, *args, **kwargs):
         self.lowp_mode = kwargs.pop('lowp_mode', 'FP8')
         self.lowp_warn_patched = kwargs.pop('lowp_warn_patched', True)
         self.lowp_warn_not_patched = kwargs.pop('lowp_warn_not_patched', True)
+        self.lowp_exclude = kwargs.pop('lowp_exclude', [])
         self.params_precision = kwargs.pop('params_precision', 32)
         self.optimizer_samples = kwargs.pop('optimizer_samples', 1)
         super().__init__(*args, **kwargs)
@@ -29,11 +31,6 @@ class LowpClassificationTask(ClassificationTask):
         with Lowp(mode=self.lowp_mode, warn_patched=self.lowp_warn_patched, warn_not_patched=self.lowp_warn_not_patched):
             super().optimizer_step(epoch, batch_idx, optimizer, optimizer_idx,
                                    optimizer_closure, on_tpu, using_native_amp, using_lbfgs)
-        with torch.no_grad():
-            for param in self.model.parameters():
-                param.copy_(truncate_fp8(param, roundingMode=4))
-                # if param.grad is not None:
-                    # param.grad.copy_(truncate_fp8(param.grad, roundingMode=4))                                   
 
     def training_step(self, batch, batch_idx):
         if isinstance(batch, dict):  # drop unlabled
@@ -42,7 +39,10 @@ class LowpClassificationTask(ClassificationTask):
         if self.mixup:
             self.mixup.sample(x.size(0))
             x = self.mixup(x)
-        with Lowp(mode=self.lowp_mode, warn_patched=self.lowp_warn_patched, warn_not_patched=self.lowp_warn_not_patched):
+        with Lowp(mode=self.lowp_mode,
+                  warn_patched=self.lowp_warn_patched,
+                  warn_not_patched=self.lowp_warn_not_patched,
+                  exclude=self.lowp_exclude):
             y_hat = self.model(x)
         loss = self.loss(y_hat, y)
         acc = FM.accuracy(y_hat.softmax(-1), y)
