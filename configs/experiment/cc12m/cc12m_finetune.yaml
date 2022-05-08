@@ -4,7 +4,7 @@
 # python run.py experiment=fixmatch_cifar10
 defaults:
   - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
-  - override /data: imagenet_dali.yaml
+  - override /data: imagenet.yaml
   - override /callbacks: default.yaml
   - override /logger: many_loggers.yaml
 
@@ -13,23 +13,27 @@ defaults:
 
 seed: 12345
 resume: null
+epochs: 5
+num_gpus: 2
+batch_size: 256
+accumulate_grad_batches: 1
+global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
+
 
 trainer:
-  min_epochs: 1
-  max_steps: 50000
-  max_epochs: ${trainer.max_steps}
+  max_epochs: ${epochs}
   benchmark: true
   precision: 16
-  accumulate_grad_batches: 16
-  gpus: 4
+  accumulate_grad_batches: ${accumulate_grad_batches}
+  gpus: [2,3]
 
 data:
   train:
     loader:
-      batch_size: 64
+      batch_size: ${batch_size}
   val:
     loader:
-      batch_size: 64
+      batch_size: ${batch_size}
 
 task:
   _target_: src.tasks.supervised.FinetuneTask
@@ -43,15 +47,15 @@ task:
     regime:
       - epoch: 0
         optimizer: SGD
-        lr: 1e-3
+        lr: 0.1
         momentum: 0.9
         lr_scheduler:
           name: CosineAnnealingLR
           time_frame: step
-          T_max: ${trainer.max_steps}
+          T_max: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
           eta_min: 0
   classifier:
     _target_: torch.nn.Linear
     in_features: 2048
     out_features: 1000
-  checkpoint_path: /home/ehoffer/PyTorch/3SL/results/cc12m_lars/finetune_fc/checkpoints/last.ckpt
+  checkpoint_path: /home/labuser/Pytorch/3SL/results/cc12m_10M_10epochs/checkpoints/last.ckpt

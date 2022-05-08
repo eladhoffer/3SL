@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from src.utils_pt.misc import calibrate_bn, no_bn_update
 from src.tasks.task import Task
 from src.models.modules.surrogate_norm import SNorm
-from src.models.modules.utils import FrozenModule, remove_module
+from src.models.modules.utils import FrozenModule, freeze_model_, remove_module, replace_module
 import torch
 from hydra.utils import instantiate
 from math import log
@@ -62,15 +62,17 @@ class ClassificationTask(Task):
 
     def validation_step(self, batch, batch_idx):
         metrics = self.evaluation_step(batch, batch_idx)
+        loss = metrics['loss']
         metrics = {f'{k}/val': v for k, v in metrics.items()}
         self.log_dict(metrics)
-        return metrics
+        return loss
 
     def test_step(self, batch, batch_idx):
         metrics = self.evaluation_step(batch, batch_idx)
+        loss = metrics['loss']
         metrics = {f'{k}/test': v for k, v in metrics.items()}
         self.log_dict(metrics)
-        return metrics
+        return loss
 
 
 class DistillationTask(ClassificationTask):
@@ -152,23 +154,18 @@ class SupervisedEmbeddingTask(ClassificationTask):
 
 class FinetuneTask(ClassificationTask):
     def __init__(self, model, optimizer, classifier, checkpoint_path,
-                 remove_layer='fc', finetune_all=True, freeze_bn=False, strict_load=True, **kwargs):
+                 replace_layer='fc', finetune_all=True, freeze_bn=False, strict_load=True, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.freeze_bn = freeze_bn
         state_dict = torch.load(checkpoint_path)['state_dict']
         state_dict = {k.replace('module', 'model'): v for k, v in state_dict.items()}
         self.load_state_dict(state_dict, strict=strict_load)
-        if remove_layer is not None:
-            remove_module(self.model, remove_layer)
+        if not finetune_all:
+            freeze_model_(self.model)
         if classifier is not None:
-            self.classifier = instantiate(classifier)
-            self.model = torch.nn.Sequential(OrderedDict([
-                ('pretrained', self.model if finetune_all else FrozenModule(self.model)),
-                ('classifier', self.classifier)
-            ]))
-        # if load_all:
-        #     state_dict = torch.load(checkpoint_path)['state_dict']
-        #     self.load_state_dict(state_dict, strict=False)
+            classifier = instantiate(classifier)
+            if replace_layer is not None:
+                replace_module(self.model, replace_layer, classifier)
         self.save_hyperparameters()
 
     def training_step(self, batch, batch_idx, optimizer_idx=None):
