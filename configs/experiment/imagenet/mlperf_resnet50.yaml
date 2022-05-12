@@ -6,37 +6,43 @@
 defaults:
   - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
   - override /task: default.yaml
-  - override /data: imagenet.yaml
+  - override /data: imagenet_dali.yaml
   - override /callbacks: default.yaml
-  - override /logger: many_loggers.yaml
+  - override /logger: csv.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-batch_size: 64
-num_gpus: 4
-accumulate_grad_batches: 8
-global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
+num_gpus: 2
+batch_size: 512
 resume: null
-epochs: 40
-warmup_epochs: 5
+epochs: 35
+lr_warmup_epochs: 5
+lr_decay_epochs: 35
+accumulate_grad_batches: 2
+global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
+
 
 trainer:
-  max_epochs: ${epochs}
+  max_steps: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
   gpus: ${num_gpus}
   precision: 16
   benchmark: true
-  sync_batchnorm: true
   accumulate_grad_batches: ${accumulate_grad_batches}
+  log_every_n_steps: 50
+  flush_logs_every_n_steps: 200  
 
 data:
   train:
     loader:
       batch_size: ${batch_size}
+      num_workers: 32
   val:
     loader:
       batch_size: ${batch_size}
+      num_workers: 32
+  test: ${data.val}
 
 task:
   _target_: src.tasks.supervised.ClassificationTask
@@ -64,8 +70,8 @@ task:
     lr_scheduler:
       _target_: src.optim.scheduler.PolynomialWarmUpDecay
       lr: ${task.optimizer.optimizer.lr}
-      warmup_steps: ${training_steps:${imagenet_size},${global_batch_size},${warmup_epochs}}
-      total_steps: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
+      warmup_steps: ${training_steps:${imagenet_size},${global_batch_size},${lr_warmup_epochs}}
+      total_steps: ${training_steps:${imagenet_size},${global_batch_size},${lr_decay_epochs}}
       init_lr: 0.
       final_lr: 0.0001
       decay_power: 2.0

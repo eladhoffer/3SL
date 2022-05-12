@@ -6,8 +6,8 @@ train:
     batch_size: ${batch_size}
     num_workers: ${num_workers}
     drop_last: true
-    cpu: true
-    image_dtype: float
+    cpu: false
+    image_dtype: half
     is_training: true
 val:
   dataset: ${data_dir}/imagenet/val
@@ -16,7 +16,7 @@ val:
     batch_size: ${eval_batch_size}
     num_workers: ${eval_num_workers}
     drop_last: false
-    cpu: true
-    image_dtype: float
+    cpu: false
+    image_dtype: half
     is_training: false
-test: null
+test: ${data.val}

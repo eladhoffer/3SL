@@ -42,3 +42,4 @@ val:
     drop_last: false
     num_workers: ${eval_num_workers}
     pin_memory: true    
+test: ${data.val}
