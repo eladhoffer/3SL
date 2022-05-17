@@ -19,4 +19,13 @@ val:
     cpu: false
     image_dtype: half
     is_training: false
-test: ${data.val}
+test:
+  dataset: ${data_dir}/imagenet/val
+  loader:
+    _target_: src.data.loaders.dali.imagenet_loader
+    batch_size: ${eval_batch_size}
+    num_workers: ${eval_num_workers}
+    drop_last: false
+    cpu: false
+    image_dtype: half
+    is_training: false
