@@ -16,7 +16,7 @@ OmegaConf.register_new_resolver(
 )
 
 
-@hydra.main(config_path="configs/", config_name="config.yaml")
+@hydra.main(version_base=None, config_path="configs/", config_name="config.yaml")
 def main(config: DictConfig):
 
     # Imports should be nested inside @hydra.main to optimize tab completion
