@@ -30,6 +30,8 @@ class ClassificationTask(Task):
         if isinstance(batch, dict):  # drop unlabled
             batch = batch['labeled']
         x, y = batch
+        #if self.channels_last:
+        #    x = x.to(memory_format=torch.channels_last)
         if self.mixup:
             self.mixup.sample(x.size(0))
             x = self.mixup(x)

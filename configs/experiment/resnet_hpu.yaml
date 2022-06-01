@@ -1,0 +1,77 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=fixmatch_cifar10
+defaults:
+  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
+  - override /task: default.yaml
+  - override /data: imagenet_habana.yaml
+  - override /callbacks: default.yaml
+  - override /logger: csv.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+resume: null
+data_dir: /root/PyTorch/3SL/Datasets
+num_devices: 1
+batch_size: 256
+epochs: 41
+lr_warmup_epochs: 5
+lr_decay_epochs: 40
+accumulate_grad_batches: 1
+global_batch_size: ${mul:${mul:${batch_size},${num_devices}},${accumulate_grad_batches}}
+
+
+trainer:
+  gpus: null
+  max_steps: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
+  hpus: ${num_devices}
+  accumulate_grad_batches: ${accumulate_grad_batches}
+  log_every_n_steps: 50
+  flush_logs_every_n_steps: 200  
+
+data:
+  train:
+    loader:
+      batch_size: ${batch_size}
+      num_workers: 8
+  val:
+    loader:
+      batch_size: ${batch_size}
+      num_workers: 8
+  test: ${data.val}
+
+task:
+  _target_: src.tasks.supervised.ClassificationTask
+  model:
+    _target_: torchvision.models.resnet50
+  label_smoothing: 0.1
+  optimizer:
+    _target_: src.optim.OptimConfig.instantiate
+    optimizer:
+      _target_: src.optim.lars.LARS
+      lr: 8.5
+      momentum: 0.9
+      weight_decay: 0.0002
+      nesterov: false
+      trust_coefficient: 0.001
+      eps: 1e-8
+    optimizer_filters:
+      - filter:
+          _target_: src.optim.filter.OnlyBiasBN
+          exclude: true
+      - filter:
+          _target_: src.optim.filter.OnlyBiasBN
+        skip_scale: true
+        weight_decay: 0.0         
+    lr_scheduler:
+      _target_: src.optim.scheduler.PolynomialWarmUpDecay
+      lr: ${task.optimizer.optimizer.lr}
+      warmup_steps: ${training_steps:${imagenet_size},${global_batch_size},${lr_warmup_epochs}}
+      total_steps: ${training_steps:${imagenet_size},${global_batch_size},${lr_decay_epochs}}
+      init_lr: 0.
+      final_lr: 0.0001
+      decay_power: 2.0
+    interval: step

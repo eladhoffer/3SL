@@ -4,7 +4,13 @@ from copy import deepcopy
 from hydra.utils import instantiate
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from src.utils_pt.mixup import MixUp
-
+try:
+    from habana_frameworks.torch import hpu
+    if hpu.is_available():
+        HPU_AVAILABLE = True
+        from src.utils.hpu import permute_params
+except:
+    HPU_AVAILABLE = False
 
 class Task(pl.LightningModule):
 
@@ -12,9 +18,14 @@ class Task(pl.LightningModule):
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
                  use_mixup=False, mixup_alpha=1.,
                  use_sam=False, sam_rho=0.05, sam_compare_grad=False,
-                 jit_model=False, **kwargs):
+                 channels_last=False, jit_model=False, **kwargs):
         super().__init__(**kwargs)
         self.model = instantiate(model)
+        if channels_last:
+            self.model = self.model.to(memory_format=torch.channels_last)
+            self.channels_last = True
+        if HPU_AVAILABLE:
+            permute_params(self.model, True, False)
         if jit_model:
             self.model = torch.jit.script(self.model)
         self.optimizer_config = optimizer
