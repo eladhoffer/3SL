@@ -30,7 +30,13 @@ trainer:
   hpus: ${num_devices}
   accumulate_grad_batches: ${accumulate_grad_batches}
   log_every_n_steps: 50
-  flush_logs_every_n_steps: 200  
+  flush_logs_every_n_steps: 200
+  precision: 16
+  hmp_params:
+    level: O1
+    verbose: false
+    bf16_ops: ""
+    fp32_ops: ""
 
 data:
   train:
