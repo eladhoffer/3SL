@@ -1,6 +1,7 @@
 from src.tasks.supervised import ClassificationTask
 from lowp import Lowp
 from lowp.functional import truncate_fp8
+from lowp.measured import register_qm, QUpdater
 from torchmetrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
@@ -8,6 +9,39 @@ from src.tasks.task import Task
 import torch
 from hydra.utils import instantiate
 from copy import deepcopy
+
+
+class QMClassificationTask(ClassificationTask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        register_qm(self.model)
+        self.qupdater = QUpdater(self.model)
+
+    def log_qstats(self):
+        def _log_all(module_name, module,
+                     names=['statistics', 'exp_bias', 'grad_statistics', 'grad_exp_bias']):
+            for name in names:
+                stat = getattr(module, name, None)
+                if stat is not None:
+                    self.log(f'{name}/{module_name}', stat.item())
+
+        for name, module in self.model.named_modules():
+            for qm_name in ['input', 'output', 'weight', 'bias']:
+                qm = getattr(module, qm_name, None)
+                if qm is not None:
+                    _log_all(f'{name}.{qm_name}', qm)
+
+    def metrics(self, output, target):
+        output = output.tensor
+        acc = FM.accuracy(output.detach().softmax(dim=-1), target)
+        return {'accuracy': acc}
+
+    def loss(self, output, target):
+        return super().loss(output, target).tensor
+
+    def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
+        self.log_qstats()
+        return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
 
 
 class LowpClassificationTask(ClassificationTask):
