@@ -14,11 +14,7 @@ from copy import deepcopy
 class QMClassificationTask(ClassificationTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        register_qm(self.model)
-
-    def configure_optimizers(self):
-        self.qupdater = QUpdater(self.model)
-        return super().configure_optimizers()
+        register_qm(self.model, q_args={'clip': True}, q_grad_args={'clip': True})
 
     def log_qstats(self):
         def _log_all(module_name, module,
@@ -44,13 +40,14 @@ class QMClassificationTask(ClassificationTask):
     def loss(self, output, target):
         return super().loss(output, target).tensor
 
+    def on_train_start(self) -> None:
+        self.qupdater = QUpdater(self.model, min_exp_bias=5, max_exp_bias=25)
+        return super().on_train_start()
+
     def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
         self.log_qstats()
-        return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
-
-    def on_after_backward(self) -> None:
         self.qupdater.step()
-        return super().on_after_backward()
+        return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
 
 
 class LowpClassificationTask(ClassificationTask):
