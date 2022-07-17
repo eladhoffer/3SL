@@ -4,7 +4,7 @@
 # python run.py experiment=resnet50_imagenet.yaml
 
 defaults:
-  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
   - override /task: default.yaml
   - override /data: imagenet_dali.yaml
   - override /callbacks: default.yaml
@@ -14,13 +14,13 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-num_gpus: 1
-batch_size: 32
+num_gpus: 4
+batch_size: 64
 resume: null
 epochs: 41
 lr_warmup_epochs: 5
 lr_decay_epochs: 40
-accumulate_grad_batches: 1
+accumulate_grad_batches: 8
 global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
 
 
@@ -37,13 +37,15 @@ data:
   train:
     loader:
       batch_size: ${batch_size}
-      num_workers: 16
+      num_workers: 8
       image_dtype: float
+      cpu: true
   val:
     loader:
       batch_size: ${batch_size}
-      num_workers: 16
+      num_workers: 8
       image_dtype: float
+      cpu: true
 
 task:
   _target_: src.tasks.lowp.QMClassificationTask

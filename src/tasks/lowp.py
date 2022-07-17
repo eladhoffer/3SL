@@ -15,7 +15,10 @@ class QMClassificationTask(ClassificationTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         register_qm(self.model)
+
+    def configure_optimizers(self):
         self.qupdater = QUpdater(self.model)
+        return super().configure_optimizers()
 
     def log_qstats(self):
         def _log_all(module_name, module,
@@ -23,6 +26,8 @@ class QMClassificationTask(ClassificationTask):
             for name in names:
                 stat = getattr(module, name, None)
                 if stat is not None:
+                    if 'statistics' in name and float(stat) < 0:
+                        continue
                     self.log(f'{name}/{module_name}', stat.item())
 
         for name, module in self.model.named_modules():
@@ -42,6 +47,10 @@ class QMClassificationTask(ClassificationTask):
     def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
         self.log_qstats()
         return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
+
+    def on_after_backward(self) -> None:
+        self.qupdater.step()
+        return super().on_after_backward()
 
 
 class LowpClassificationTask(ClassificationTask):
