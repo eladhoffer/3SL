@@ -22,35 +22,47 @@ class ClassificationTask(Task):
             target = self.mixup.mix_target(target, output.size(-1))
         return F.cross_entropy(output, target, label_smoothing=self.label_smoothing)
 
-    def metrics(self, output, target):
-        acc = FM.accuracy(output.detach().softmax(dim=-1), target)
-        return {'accuracy': acc}
+    def metrics(self, output, target=None, **kwargs):
+        metrics_dict = {**kwargs}
+        if output is not None and target is not None:
+            metrics_dict['accuracy'] = FM.accuracy(output.detach().softmax(dim=-1), target)
+        return metrics_dict
 
-    def training_step(self, batch, batch_idx, optimizer_idx=None):
+    def prepare_batch(self, batch):
         if isinstance(batch, dict):  # drop unlabled
             batch = batch['labeled']
         x, y = batch
-        #if self.channels_last:
-        #    x = x.to(memory_format=torch.channels_last)
+        if getattr(self, 'channels_last', False):
+            x = x.to(memory_format=torch.channels_last)
         if self.mixup:
             self.mixup.sample(x.size(0))
             x = self.mixup(x)
+        return x, y
+
+    def log_phase_dict(self, logged_dict, phase='train', **kwargs):
+        logged_dict = {f'{k}/{phase}': v for k, v in logged_dict.items()}
+        self.log_dict(logged_dict, **kwargs)
+
+    def sam_update(self, x, y, loss):
+        eps_w = self.sam_step(loss)
+        loss_w_sam = self.loss(self.model(x), y)
+        # revert eps_w
+        torch._foreach_sub_(list(self.parameters()), eps_w)
+        self.manual_step(loss_w_sam)
+        return loss_w_sam
+
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
+        x, y = self.prepare_batch(batch)
         y_hat = self.model(x)
         loss = self.loss(y_hat, y)
-        self.log_lr(on_step=True)
-        metrics = self.metrics(y_hat, y)
-        metrics['loss'] = loss
-        self.log_dict({f'{k}/train': v for k, v in metrics.items()},
-                      prog_bar=True, on_epoch=False, on_step=True)
+        metrics = self.metrics(output=y_hat, target=y, loss=loss)
         if self.use_sam:
-            eps_w = self.sam_step(loss)
-            loss_w_sam = self.loss(self.model(x), y)
-            # revert eps_w
-            torch._foreach_sub_(list(self.parameters()), eps_w)
-            self.manual_step(loss_w_sam)
+            metrics['sam_loss'] = self.sam_update(x, y, loss)
+        self.log_phase_dict(metrics, prog_bar=True, on_epoch=False, on_step=True)
+        self.log_lr(on_step=True)
         return loss
 
-    def evaluation_step(self, batch, batch_idx):
+    def evaluation_step(self, batch, batch_idx, phase='val'):
         model = getattr(self, '_model_ema', self.model)
         x, y = batch
         if self.calibrate_bn_on_eval:
@@ -58,23 +70,16 @@ class ClassificationTask(Task):
                 y_hat = model(x)
         else:
             y_hat = model(x)
-        metrics = self.metrics(y_hat, y)
-        metrics['loss'] = self.loss(y_hat, y)
-        return metrics
+        loss = self.loss(y_hat, y)
+        metrics = self.metrics(y_hat, y, loss=loss)
+        self.log_phase_dict(metrics, phase=phase)
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        metrics = self.evaluation_step(batch, batch_idx)
-        loss = metrics['loss']
-        metrics = {f'{k}/val': v for k, v in metrics.items()}
-        self.log_dict(metrics)
-        return loss
+        return self.evaluation_step(batch, batch_idx, phase='val')
 
     def test_step(self, batch, batch_idx):
-        metrics = self.evaluation_step(batch, batch_idx)
-        loss = metrics['loss']
-        metrics = {f'{k}/test': v for k, v in metrics.items()}
-        self.log_dict(metrics)
-        return loss
+        return self.evaluation_step(batch, batch_idx, phase='test')
 
 
 class DistillationTask(ClassificationTask):
@@ -176,96 +181,3 @@ class FinetuneTask(ClassificationTask):
                 if isinstance(m, torch.nn.BatchNorm2d):
                     m.eval()
         return super().training_step(batch, batch_idx, optimizer_idx=optimizer_idx)
-
-
-class ClassificationWNoiseTask(ClassificationTask):
-    def __init__(self, model, optimizer, label_smoothing=0, entropy_eta=1e-4, surrogate_norm=False,
-                 noise_example=True, calibrate_bn_on_eval=False, **kwargs):
-        super().__init__(model, optimizer, label_smoothing, calibrate_bn_on_eval, **kwargs)
-        self.noise_example = noise_example
-        self.entropy_eta = entropy_eta
-        if surrogate_norm:
-            self.noise_example = True
-            self.model = SNorm.convert_snorm(self.model)
-
-    @staticmethod
-    def noise_entropy(model, input_example, noise_output=None):
-        if noise_output is None:
-            noise = torch.randn_like(input_example)
-            with no_bn_update(model) as model:
-                noise_output = model(noise)
-        noise_entropy = -(F.softmax(noise_output, dim=1) *
-                          F.log_softmax(noise_output, dim=1)).sum(dim=1).mean()
-        return noise_entropy
-
-    def metrics(self, output, target, input_example=None):
-        _, output = self._remove_noise_output(output)
-        metrics = super().metrics(output, target)
-        with torch.no_grad():
-            noise_entropy = self.noise_entropy(self.model, input_example)
-        metrics['noise_entropy'] = noise_entropy
-        return metrics
-
-    def loss(self, output, target, input_example=None):
-        noise_output, output = self._remove_noise_output(output)
-        loss = super().loss(output, target)
-        if self.training and self.entropy_eta > 0:
-            num_classes = output.size(-1)
-            # norm_margin = F.mse_loss(noise_output, output.mean(dim=0).detach())
-            noise_entropy = self.noise_entropy(self.model, input_example,
-                                               noise_output=noise_output)
-            # mean_entropy = -(F.softmax(output, dim=1) *
-            #                  F.log_softmax(output, dim=1)).sum(dim=1).mean()
-            # entropy_margin = (mean_entropy.detach() - noise_entropy).abs()
-            entropy_margin = log(num_classes) - noise_entropy
-            loss += self.entropy_eta * entropy_margin
-        return loss
-
-    def _add_noise_example(self, x):
-        if self.training and self.noise_example:
-            noise = torch.randn(1, *x.shape[1:], device=x.device, dtype=x.dtype)
-            x = torch.cat((noise, x), dim=0)
-        return x
-
-    def _remove_noise_output(self, output):
-        noise_output = None
-        if self.training and self.noise_example:
-            noise_output = output[0].unsqueeze(0)
-            output = output[1:]
-        return noise_output, output
-
-    def training_step(self, batch, batch_idx, optimizer_idx=None):
-        if isinstance(batch, dict):  # drop unlabled
-            batch = batch['labeled']
-        x, y = batch
-        x = self._add_noise_example(x)
-        if self.mixup:
-            self.mixup.sample(x.size(0))
-            x = self.mixup(x)
-        y_hat = self.model(x)
-        loss = self.loss(y_hat, y, input_example=x)
-        self.log_lr(on_step=True)
-        metrics = self.metrics(y_hat, y, input_example=x)
-        metrics['loss'] = loss
-        self.log_dict({f'{k}/train': v for k, v in metrics.items()},
-                      prog_bar=True, on_epoch=True, on_step=True)
-        if self.use_sam:
-            eps_w = self.sam_step(loss)
-            loss_w_sam = self.loss(self.model(x), y)
-            # revert eps_w
-            torch._foreach_sub_(list(self.parameters()), eps_w)
-            self.manual_step(loss_w_sam)
-        return loss
-
-    def evaluation_step(self, batch, batch_idx):
-        model = getattr(self, '_model_ema', self.model)
-        x, y = batch
-        x = self._add_noise_example(x)
-        if self.calibrate_bn_on_eval:
-            with calibrate_bn(model):
-                y_hat = model(x)
-        else:
-            y_hat = model(x)
-        metrics = self.metrics(y_hat, y, input_example=x)
-        metrics['loss'] = self.loss(y_hat, y, input_example=x)
-        return metrics

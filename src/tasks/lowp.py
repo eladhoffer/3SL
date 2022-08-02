@@ -13,6 +13,8 @@ from copy import deepcopy
 
 class QMClassificationTask(ClassificationTask):
     def __init__(self, *args, **kwargs):
+        self.fixed_loss_scale = kwargs.pop('fixed_loss_scale', None)
+        self.log_all_qstats = kwargs.pop('log_all_qstats', False)
         super().__init__(*args, **kwargs)
         register_qm(self.model, q_args={'clip': True}, q_grad_args={'clip': True})
 
@@ -32,22 +34,38 @@ class QMClassificationTask(ClassificationTask):
                 if qm is not None:
                     _log_all(f'{name}.{qm_name}', qm)
 
-    def metrics(self, output, target):
+    def metrics(self, output, target=None, **kwargs):
         output = output.tensor
-        acc = FM.accuracy(output.detach().softmax(dim=-1), target)
-        return {'accuracy': acc}
+        if self.fixed_loss_scale is not None:
+            kwargs['loss'] = kwargs['loss'] / self.fixed_loss_scale
+            # try:
+            #     kwargs['bn1_grad'] = self.model.bn1.weight.grad.mean()
+            # except AttributeError:
+            #     pass
+        return super().metrics(output=output, target=target, **kwargs)
 
     def loss(self, output, target):
-        return super().loss(output, target).tensor
+        loss = super().loss(output, target).tensor
+        if self.fixed_loss_scale is not None:
+            loss = loss * self.fixed_loss_scale
+        return loss
 
     def on_train_start(self) -> None:
-        self.qupdater = QUpdater(self.model, min_exp_bias=5, max_exp_bias=25)
+        self.qupdater = QUpdater(self.model, min_exp_bias=0, max_exp_bias=30)
         return super().on_train_start()
 
     def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
-        self.log_qstats()
+        if self.log_all_qstats:
+            self.log_qstats()
         self.qupdater.step()
         return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
+
+    def on_before_optimizer_step(self, optimizer, optimizer_idx) -> None:
+        if self.fixed_loss_scale is not None:
+            with torch.no_grad():
+                grads = [p.grad for p in self.parameters() if p.grad is not None]
+                torch._foreach_div_(grads, self.fixed_loss_scale)
+        return super().on_before_optimizer_step(optimizer, optimizer_idx)
 
 
 class LowpClassificationTask(ClassificationTask):
