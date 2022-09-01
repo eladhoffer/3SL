@@ -1,6 +1,7 @@
 from src.tasks.supervised import ClassificationTask
 from lowp import Lowp
 from lowp.functional import truncate_fp8
+from lowp.measured import register_qm, QUpdater
 from torchmetrics import functional as FM
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
@@ -8,6 +9,63 @@ from src.tasks.task import Task
 import torch
 from hydra.utils import instantiate
 from copy import deepcopy
+
+
+class QMClassificationTask(ClassificationTask):
+    def __init__(self, *args, **kwargs):
+        self.fixed_loss_scale = kwargs.pop('fixed_loss_scale', None)
+        self.log_all_qstats = kwargs.pop('log_all_qstats', False)
+        super().__init__(*args, **kwargs)
+        register_qm(self.model, q_args={'clip': True}, q_grad_args={'clip': True})
+
+    def log_qstats(self):
+        def _log_all(module_name, module,
+                     names=['statistics', 'exp_bias', 'grad_statistics', 'grad_exp_bias']):
+            for name in names:
+                stat = getattr(module, name, None)
+                if stat is not None:
+                    if 'statistics' in name and float(stat) < 0:
+                        continue
+                    self.log(f'{name}/{module_name}', stat.item())
+
+        for name, module in self.model.named_modules():
+            for qm_name in ['input', 'output', 'weight', 'bias']:
+                qm = getattr(module, qm_name, None)
+                if qm is not None:
+                    _log_all(f'{name}.{qm_name}', qm)
+
+    def metrics(self, output, target=None, **kwargs):
+        output = output.tensor
+        if self.fixed_loss_scale is not None:
+            kwargs['loss'] = kwargs['loss'] / self.fixed_loss_scale
+            # try:
+            #     kwargs['bn1_grad'] = self.model.bn1.weight.grad.mean()
+            # except AttributeError:
+            #     pass
+        return super().metrics(output=output, target=target, **kwargs)
+
+    def loss(self, output, target):
+        loss = super().loss(output, target).tensor
+        if self.fixed_loss_scale is not None:
+            loss = loss * self.fixed_loss_scale
+        return loss
+
+    def on_train_start(self) -> None:
+        self.qupdater = QUpdater(self.model, min_exp_bias=0, max_exp_bias=30)
+        return super().on_train_start()
+
+    def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
+        if self.log_all_qstats:
+            self.log_qstats()
+        self.qupdater.step()
+        return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
+
+    def on_before_optimizer_step(self, optimizer, optimizer_idx) -> None:
+        if self.fixed_loss_scale is not None:
+            with torch.no_grad():
+                grads = [p.grad for p in self.parameters() if p.grad is not None]
+                torch._foreach_div_(grads, self.fixed_loss_scale)
+        return super().on_before_optimizer_step(optimizer, optimizer_idx)
 
 
 class LowpClassificationTask(ClassificationTask):

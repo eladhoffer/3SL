@@ -1,0 +1,6 @@
+loss_scaler:
+  _target_: pytorch_lightning.plugins.precision.native_amp.NativeMixedPrecisionPlugin
+  precision: 16
+  device: cuda
+  scaler:
+    _target_: torch.cuda.amp.GradScaler

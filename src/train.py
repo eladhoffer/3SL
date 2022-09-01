@@ -13,6 +13,11 @@ from pytorch_lightning import (
 from pytorch_lightning.loggers import LightningLoggerBase
 
 from src.utils import utils
+try:
+    from habana_frameworks.torch import hpu
+    hpu.init()
+except:
+    pass
 
 log = utils.get_logger(__name__)
 
