@@ -8,27 +8,10 @@ Adapterd from https://github.com/PyTorchLightning/lightning-bolts/blob/master/pl
 import torch
 from torch.optim.optimizer import Optimizer, required
 try:
+    from habana_frameworks.torch import core as htcore
+    from habana_frameworks.torch import _hpex_C    
     from habana_frameworks.torch.hpex.optimizers import FusedLars, FusedSGD
     HPU_AVAILABLE = True
-    
-    class FusedLARS(FusedLars):
-        def __init__(
-            self,
-            params,
-            lr=required,
-            momentum=0,
-            dampening=0,
-            weight_decay=0,
-            nesterov=False,
-            trust_coefficient=0.001,
-            eps=1e-8,
-            skip_scale=False
-        ):
-            optimizer = FusedSGD(params, lr, momentum, weight_decay, dampening, nesterov)
-            eeta = trust_coefficient
-            skip_mask = [1 if skip_scale else 0] * len(params)
-            super().__init__(optimizer, skip_mask, eeta, eps)
-
 except:
     pass
 
@@ -178,3 +161,54 @@ class LARS(Optimizer):
 
         return loss
 
+if HPU_AVAILABLE:
+    class FusedLARS(FusedLars):
+        def __init__(
+            self,
+            params,
+            lr=required,
+            momentum=0,
+            dampening=0,
+            weight_decay=0,
+            nesterov=False,
+            trust_coefficient=0.001,
+            eps=1e-8,
+            skip_scale=False
+        ):
+            optimizer = FusedSGD(params, lr, momentum, weight_decay, dampening, nesterov)
+            for group in optimizer.param_groups:
+                skip = group.get('skip_scale', False)
+                group['skip_mask'] = [int(skip)] * len(group['params'])
+            eeta = trust_coefficient
+            skip_mask = [g['skip_mask'] for g in optimizer.param_groups]
+            super().__init__(optimizer, skip_mask, eeta, eps)
+        
+        def step(self, closure=None):
+            loss = None
+            if closure is not None:
+                loss = closure()
+
+            with torch.no_grad():
+                weight_decays = []
+                for group in self.optim.param_groups:
+                    # absorb weight decay control from optimizer
+                    weight_decay = group['weight_decay'] if 'weight_decay' in group else 0
+                    weight_decays.append(weight_decay)
+                    group['weight_decay'] = 0
+                    param_list = []
+                    grad_list = []
+                    skip_mask_list = group['skip_mask']
+                    for idx, p in enumerate(group['params']):
+                        if p.grad is None:
+                            continue
+                        param_list.append(p.data)
+                        grad_list.append(p.grad.data)
+                    htcore.mark_step()
+                    _hpex_C.fused_lars(param_list, grad_list, skip_mask_list, self.eeta, weight_decay, self.eps, group['lr'])
+                    htcore.mark_step()
+
+            self.optim.step()
+            # return weight decay control to optimizer
+            for i, group in enumerate(self.optim.param_groups):
+                group['weight_decay'] = weight_decays[i]
+            return loss
