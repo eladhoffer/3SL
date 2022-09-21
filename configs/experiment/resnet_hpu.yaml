@@ -52,7 +52,7 @@ task:
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
-      _target_: src.optim.lars.LARS
+      _target_: src.optim.lars.FusedLARS
       lr: 8.5
       momentum: 0.9
       weight_decay: 0.0002

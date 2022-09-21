@@ -7,7 +7,30 @@ Adapterd from https://github.com/PyTorchLightning/lightning-bolts/blob/master/pl
 """
 import torch
 from torch.optim.optimizer import Optimizer, required
+try:
+    from habana_frameworks.torch.hpex.optimizers import FusedLars, FusedSGD
+    HPU_AVAILABLE = True
+    
+    class FusedLARS(FusedLars):
+        def __init__(
+            self,
+            params,
+            lr=required,
+            momentum=0,
+            dampening=0,
+            weight_decay=0,
+            nesterov=False,
+            trust_coefficient=0.001,
+            eps=1e-8,
+            skip_scale=False
+        ):
+            optimizer = FusedSGD(params, lr, momentum, weight_decay, dampening, nesterov)
+            eeta = trust_coefficient
+            skip_mask = [1 if skip_scale else 0] * len(params)
+            super().__init__(optimizer, skip_mask, eeta, eps)
 
+except:
+    pass
 
 class LARS(Optimizer):
     """Extends SGD in PyTorch with LARS scaling from the paper
@@ -154,3 +177,4 @@ class LARS(Optimizer):
                 p.add_(d_p, alpha=-group["lr"])
 
         return loss
+
