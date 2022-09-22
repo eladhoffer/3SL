@@ -20,7 +20,7 @@ resume: null
 epochs: 41
 lr_warmup_epochs: 5
 lr_decay_epochs: 40
-accumulate_grad_batches: 8
+accumulate_grad_batches: 1
 global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
 
 
@@ -51,13 +51,21 @@ task:
   _target_: src.tasks.lowp.QMClassificationTask
   model:
     _target_: torchvision.models.resnet50
+  qm_config:
+    q_args:
+      clip: true
+    q_grad_args:
+      clip: true
+      roundingMode: 4 # SR
+    q_param_grad_args:
+      enable: false
+      roundingMode: 0
   label_smoothing: 0.1
-  fixed_loss_scale: 128.0
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
       _target_: src.optim.lars.LARS
-      lr: 8.5
+      lr: 2.0
       momentum: 0.9
       weight_decay: 0.0002
       nesterov: false

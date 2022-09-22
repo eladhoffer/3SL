@@ -15,8 +15,10 @@ class QMClassificationTask(ClassificationTask):
     def __init__(self, *args, **kwargs):
         self.fixed_loss_scale = kwargs.pop('fixed_loss_scale', None)
         self.log_all_qstats = kwargs.pop('log_all_qstats', False)
+        self.adaptive = kwargs.pop('adaptive', True)
+        qm_config = kwargs.pop('qm_config', {})
         super().__init__(*args, **kwargs)
-        register_qm(self.model, q_args={'clip': True}, q_grad_args={'clip': True})
+        register_qm(self.model, **qm_config)
 
     def log_qstats(self):
         def _log_all(module_name, module,
@@ -45,7 +47,7 @@ class QMClassificationTask(ClassificationTask):
         return super().metrics(output=output, target=target, **kwargs)
 
     def loss(self, output, target):
-        loss = super().loss(output, target).tensor
+        loss = super().loss(output, target)
         if self.fixed_loss_scale is not None:
             loss = loss * self.fixed_loss_scale
         return loss
@@ -57,7 +59,8 @@ class QMClassificationTask(ClassificationTask):
     def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
         if self.log_all_qstats:
             self.log_qstats()
-        self.qupdater.step()
+        if self.adaptive:
+            self.qupdater.step()
         return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
 
     def on_before_optimizer_step(self, optimizer, optimizer_idx) -> None:
