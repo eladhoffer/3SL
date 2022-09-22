@@ -63,7 +63,7 @@ class Task(pl.LightningModule):
             self.configure_regularizers(self.optimizer_config.regularizers())
             return self.optimizer_config.configuration()
 
-    def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
+    def on_train_batch_start(self, *kargs, **kwargs) -> None:
         if self.optimizer_regime is not None:
             self.optimizer_regime.update(self.current_epoch, self.global_step + 1)
             self.optimizer_regime.pre_forward()
@@ -71,7 +71,7 @@ class Task(pl.LightningModule):
         for regularizer in self.regularizers():
             regularizer.pre_forward()
             regularizer.pre_backward()
-        return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
+        return super().on_train_batch_start(*kargs, **kwargs)
 
     def on_after_backward(self) -> None:
         if self.optimizer_regime is not None:

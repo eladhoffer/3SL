@@ -37,6 +37,7 @@ class QMClassificationTask(ClassificationTask):
                     _log_all(f'{name}.{qm_name}', qm)
 
     def metrics(self, output, target=None, **kwargs):
+        #kwargs['loss'] = kwargs['loss'].tensor
         output = output.tensor
         if self.fixed_loss_scale is not None:
             kwargs['loss'] = kwargs['loss'] / self.fixed_loss_scale
@@ -50,18 +51,18 @@ class QMClassificationTask(ClassificationTask):
         loss = super().loss(output, target)
         if self.fixed_loss_scale is not None:
             loss = loss * self.fixed_loss_scale
-        return loss
+        return loss.tensor
 
     def on_train_start(self) -> None:
         self.qupdater = QUpdater(self.model, min_exp_bias=0, max_exp_bias=30)
         return super().on_train_start()
 
-    def on_train_batch_start(self, batch, batch_idx: int, dataloader_idx: int) -> None:
+    def on_train_batch_start(self, *kargs, **kwargs) -> None:
         if self.log_all_qstats:
             self.log_qstats()
         if self.adaptive:
             self.qupdater.step()
-        return super().on_train_batch_start(batch, batch_idx, dataloader_idx)
+        return super().on_train_batch_start(*kargs, **kwargs)
 
     def on_before_optimizer_step(self, optimizer, optimizer_idx) -> None:
         if self.fixed_loss_scale is not None:
