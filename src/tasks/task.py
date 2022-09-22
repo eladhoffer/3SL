@@ -5,12 +5,9 @@ from hydra.utils import instantiate
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from src.utils_pt.mixup import MixUp
 try:
-    from habana_frameworks.torch import hpu
-    if hpu.is_available():
-        HPU_AVAILABLE = True
-        from src.utils.hpu import permute_params
+    import habana_frameworks.torch.core as htcore
 except:
-    HPU_AVAILABLE = False
+    pass
 
 class Task(pl.LightningModule):
 
@@ -24,8 +21,6 @@ class Task(pl.LightningModule):
         if channels_last:
             self.model = self.model.to(memory_format=torch.channels_last)
             self.channels_last = True
-        if HPU_AVAILABLE:
-            permute_params(self.model, True, False)
         if jit_model:
             self.model = torch.jit.script(self.model)
         self.optimizer_config = optimizer

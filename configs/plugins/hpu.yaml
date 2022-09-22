@@ -1,0 +1,8 @@
+hpu:
+  _target_: pytorch_lightning.plugins.HPUPrecisionPlugin
+  precision: 16
+  opt_level: "O1"
+  verbose: False
+  bf16_file_path: ${hydra:runtime.cwd}/configs/hpu_ops_bf16.txt
+  fp32_file_path: ${hydra:runtime.cwd}/configs/hpu_ops_fp32.txt
+    
