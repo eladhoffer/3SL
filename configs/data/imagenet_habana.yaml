@@ -22,7 +22,6 @@ train:
     num_workers: ${num_workers}
     pin_memory: true
     drop_last: true
-    is_training: true
 val:
   dataset:
     name: imagenet
@@ -43,7 +42,6 @@ val:
     num_workers: ${eval_num_workers}
     pin_memory: true
     drop_last: false
-    is_training: false
 test:
   dataset:
     name: imagenet
@@ -64,4 +62,3 @@ test:
     num_workers: ${eval_num_workers}
     pin_memory: true
     drop_last: false
-    is_training: false

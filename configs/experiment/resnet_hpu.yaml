@@ -7,6 +7,7 @@ defaults:
   - override /task: default.yaml
   - override /data: imagenet_habana.yaml
   - override /callbacks: default.yaml
+  - override /plugins: hpu.yaml
   - override /logger: csv.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
@@ -14,7 +15,7 @@ defaults:
 
 seed: 12345
 resume: null
-data_dir: /root/PyTorch/3SL/Datasets
+data_dir: /root/Datasets
 num_devices: 1
 batch_size: 256
 epochs: 41
@@ -25,18 +26,14 @@ global_batch_size: ${mul:${mul:${batch_size},${num_devices}},${accumulate_grad_b
 
 
 trainer:
+  accelerator: hpu
   gpus: null
   max_steps: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
-  hpus: ${num_devices}
+  devices: ${num_devices}
   accumulate_grad_batches: ${accumulate_grad_batches}
   log_every_n_steps: 50
   flush_logs_every_n_steps: 200
   precision: 16
-  hmp_params:
-    level: O1
-    verbose: false
-    bf16_ops: ""
-    fp32_ops: ""
 
 data:
   train:
@@ -47,8 +44,6 @@ data:
     loader:
       batch_size: ${batch_size}
       num_workers: 8
-  test: ${data.val}
-
 task:
   _target_: src.tasks.supervised.ClassificationTask
   model:
@@ -57,7 +52,7 @@ task:
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
-      _target_: src.optim.lars.LARS
+      _target_: src.optim.lars.FusedLARS
       lr: 8.5
       momentum: 0.9
       weight_decay: 0.0002
