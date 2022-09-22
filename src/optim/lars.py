@@ -13,7 +13,7 @@ try:
     from habana_frameworks.torch.hpex.optimizers import FusedLars, FusedSGD
     HPU_AVAILABLE = True
 except:
-    pass
+    HPU_AVAILABLE = False
 
 class LARS(Optimizer):
     """Extends SGD in PyTorch with LARS scaling from the paper
