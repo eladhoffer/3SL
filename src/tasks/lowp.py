@@ -26,9 +26,9 @@ class QMClassificationTask(ClassificationTask):
             for name in names:
                 stat = getattr(module, name, None)
                 if stat is not None:
-                    if 'statistics' in name and float(stat) < 0:
+                    if 'statistics' in name and float(stat[0]) < 0:
                         continue
-                    self.log(f'{name}/{module_name}', stat.item())
+                    self.log(f'{name}/{module_name}', stat[0].item())
 
         for name, module in self.model.named_modules():
             for qm_name in ['input', 'output', 'weight', 'bias']:
@@ -51,7 +51,7 @@ class QMClassificationTask(ClassificationTask):
         loss = super().loss(output, target)
         if self.fixed_loss_scale is not None:
             loss = loss * self.fixed_loss_scale
-        return loss.tensor
+        return loss
 
     def on_train_start(self) -> None:
         self.qupdater = QUpdater(self.model, min_exp_bias=0, max_exp_bias=30)
