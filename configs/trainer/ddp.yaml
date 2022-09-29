@@ -1,9 +1,9 @@
 _target_: pytorch_lightning.Trainer
 
 gpus: 8
-accelerator: ddp
+accelerator: gpu
+strategy: 
+  _target_: pytorch_lightning.strategies.DDPStrategy
+  find_unused_parameters: False
 benchmark: true
 resume_from_checkpoint: ${resume}
-plugins:
-  _target_: pytorch_lightning.plugins.DDPPlugin
-  find_unused_parameters: False

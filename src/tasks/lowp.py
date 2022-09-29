@@ -1,3 +1,4 @@
+from attr import has
 from src.tasks.supervised import ClassificationTask
 from lowp import Lowp
 from lowp.functional import truncate_fp8
@@ -16,9 +17,13 @@ class QMClassificationTask(ClassificationTask):
         self.fixed_loss_scale = kwargs.pop('fixed_loss_scale', None)
         self.log_all_qstats = kwargs.pop('log_all_qstats', False)
         self.adaptive = kwargs.pop('adaptive', True)
-        qm_config = kwargs.pop('qm_config', {})
+        self.qm_config = kwargs.pop('qm_config', {})
+        self.qupdater = None
         super().__init__(*args, **kwargs)
-        register_qm(self.model, **qm_config)
+        register_qm(self.model, **self.qm_config)
+
+    def configure_optimizers(self):
+        return super().configure_optimizers()
 
     def log_qstats(self):
         def _log_all(module_name, module,
@@ -37,31 +42,30 @@ class QMClassificationTask(ClassificationTask):
                     _log_all(f'{name}.{qm_name}', qm)
 
     def metrics(self, output, target=None, **kwargs):
-        #kwargs['loss'] = kwargs['loss'].tensor
-        output = output.tensor
+        for key, value in list(kwargs.items()):
+            if hasattr(value, 'tensor'): # avoid logging qmtensors
+                kwargs[key] = value.tensor
+        if hasattr(output, 'tensor'):
+            output = output.tensor
         if self.fixed_loss_scale is not None:
             kwargs['loss'] = kwargs['loss'] / self.fixed_loss_scale
-            # try:
-            #     kwargs['bn1_grad'] = self.model.bn1.weight.grad.mean()
-            # except AttributeError:
-            #     pass
         return super().metrics(output=output, target=target, **kwargs)
 
     def loss(self, output, target):
         loss = super().loss(output, target)
+        if hasattr(loss, 'tensor'):
+            loss = loss.tensor
         if self.fixed_loss_scale is not None:
             loss = loss * self.fixed_loss_scale
         return loss
 
-    def on_train_start(self) -> None:
-        self.qupdater = QUpdater(self.model, min_exp_bias=0, max_exp_bias=30)
-        return super().on_train_start()
-
     def on_train_batch_start(self, *kargs, **kwargs) -> None:
+        if self.adaptive:
+            if self.qupdater is None:
+                self.qupdater = QUpdater(self.model, min_exp_bias=0, max_exp_bias=30)
+            self.qupdater.step()
         if self.log_all_qstats:
             self.log_qstats()
-        if self.adaptive:
-            self.qupdater.step()
         return super().on_train_batch_start(*kargs, **kwargs)
 
     def on_before_optimizer_step(self, optimizer, optimizer_idx) -> None:

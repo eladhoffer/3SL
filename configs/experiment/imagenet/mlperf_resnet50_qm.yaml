@@ -31,7 +31,10 @@ trainer:
   benchmark: true
   accumulate_grad_batches: ${accumulate_grad_batches}
   log_every_n_steps: 50
-  flush_logs_every_n_steps: 200  
+
+logger:
+  csv:
+    flush_logs_every_n_steps: 200  
 
 data:
   train:
@@ -51,7 +54,7 @@ task:
   _target_: src.tasks.lowp.QMClassificationTask
   model:
     _target_: torchvision.models.resnet50
-  log_all_qstats: true    
+  log_all_qstats: false    
   qm_config:
     q_args:
       clip: true
