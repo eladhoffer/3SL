@@ -18,11 +18,14 @@ class QMClassificationTask(ClassificationTask):
         self.log_all_qstats = kwargs.pop('log_all_qstats', False)
         self.adaptive = kwargs.pop('adaptive', True)
         self.qm_config = kwargs.pop('qm_config', {})
+        self.disable_amp_loss_scaler = kwargs.pop('disable_amp_loss_scaler', False)
         self.qupdater = None
         super().__init__(*args, **kwargs)
         register_qm(self.model, **self.qm_config)
 
     def configure_optimizers(self):
+        if self.disable_amp_loss_scaler:
+            self.trainer.precision_plugin.scaler = None
         return super().configure_optimizers()
 
     def log_qstats(self):
