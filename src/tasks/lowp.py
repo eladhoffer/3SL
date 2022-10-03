@@ -1,15 +1,9 @@
-from attr import has
 from src.tasks.supervised import ClassificationTask
 from lowp import Lowp
-from lowp.functional import truncate_fp8
-from lowp.measured import register_qm, QUpdater
+from lowp.measured import register_qm
 from torchmetrics import functional as FM
-import torch.nn.functional as F
-from src.utils_pt.cross_entropy import cross_entropy
-from src.tasks.task import Task
 import torch
 from hydra.utils import instantiate
-from copy import deepcopy
 
 
 class QMClassificationTask(ClassificationTask):
@@ -18,14 +12,22 @@ class QMClassificationTask(ClassificationTask):
         self.log_all_qstats = kwargs.pop('log_all_qstats', False)
         self.adaptive = kwargs.pop('adaptive', True)
         self.qm_config = kwargs.pop('qm_config', {})
+
+        # default qupdater
+        self.qupdater_config = kwargs.pop('qupdater', {'_target_': 'lowp.measured.QUpdater'})
+        self.qupdater_config.setdefault('min_exp_bias', 0)
+        self.qupdater_config.setdefault('max_exp_bias', 30)
+
         self.disable_amp_loss_scaler = kwargs.pop('disable_amp_loss_scaler', False)
-        self.qupdater = None
         super().__init__(*args, **kwargs)
         register_qm(self.model, **self.qm_config)
 
     def configure_optimizers(self):
         if self.disable_amp_loss_scaler:
             self.trainer.precision_plugin.scaler = None
+        if self.adaptive:
+            self.qupdater = instantiate(self.qupdater_config,
+                                        module=self.model, _convert_="all")
         return super().configure_optimizers()
 
     def log_qstats(self):
@@ -46,7 +48,7 @@ class QMClassificationTask(ClassificationTask):
 
     def metrics(self, output, target=None, **kwargs):
         for key, value in list(kwargs.items()):
-            if hasattr(value, 'tensor'): # avoid logging qmtensors
+            if hasattr(value, 'tensor'):  # avoid logging qmtensors
                 kwargs[key] = value.tensor
         if hasattr(output, 'tensor'):
             output = output.tensor
@@ -64,8 +66,6 @@ class QMClassificationTask(ClassificationTask):
 
     def on_train_batch_start(self, *kargs, **kwargs) -> None:
         if self.adaptive:
-            if self.qupdater is None:
-                self.qupdater = QUpdater(self.model, min_exp_bias=0, max_exp_bias=30)
             self.qupdater.step()
         if self.log_all_qstats:
             self.log_qstats()
