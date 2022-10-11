@@ -95,7 +95,8 @@ def train(config: DictConfig) -> Optional[float]:
     # Evaluate model checkpoint
     if config.get("evaluate"):
         log.info("Validating pretrained model")
-        trainer.validate(task, datamodule=data)
+        trainer.validate(task, datamodule=data,
+                         ckpt_path=config.get("evaluate"))
     else:  # Train the model
         log.info("Starting training!")
         trainer.fit(task, datamodule=data)
