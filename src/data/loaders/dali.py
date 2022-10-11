@@ -74,6 +74,10 @@ class ModifiedDALIClassificationIterator(DALIClassificationIterator):
         batch = super(ModifiedDALIClassificationIterator, self).__next__()
         return batch[0]['data'], batch[0]['label'][:, 0]
 
+    def _end_iteration(self):
+        if self._auto_reset:
+            self.reset()
+
 
 def imagenet_loader(dataset, batch_size, drop_last=False, num_workers=0,
                     input_size=224, scale_size=256,
