@@ -92,6 +92,7 @@ class LowpClassificationTask(ClassificationTask):
             self.model = self.model.to(dtype=torch.half)
 
     def training_step(self, batch, batch_idx):
+        self.model.train()
         if isinstance(batch, dict):  # drop unlabled
             batch = batch['labeled']
         x, y = batch

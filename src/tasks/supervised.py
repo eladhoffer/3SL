@@ -52,6 +52,7 @@ class ClassificationTask(Task):
         return loss_w_sam
 
     def training_step(self, batch, batch_idx, optimizer_idx=None):
+        self.model.train()
         x, y = self.prepare_batch(batch)
         y_hat = self.model(x)
         loss = self.loss(y_hat, y)
@@ -65,6 +66,7 @@ class ClassificationTask(Task):
     def evaluation_step(self, batch, batch_idx, phase='val'):
         model = getattr(self, '_model_ema', self.model)
         x, y = batch
+        model.eval()
         if self.calibrate_bn_on_eval:
             with calibrate_bn(model):
                 y_hat = model(x)
