@@ -11,10 +11,9 @@ from math import log
 
 
 class ClassificationTask(Task):
-    def __init__(self, model, optimizer, label_smoothing=0.0, calibrate_bn_on_eval=False, **kwargs):
+    def __init__(self, model, optimizer, label_smoothing=0.0, **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.label_smoothing = label_smoothing
-        self.calibrate_bn_on_eval = calibrate_bn_on_eval
         self.save_hyperparameters()
 
     def loss(self, output, target):
@@ -62,14 +61,20 @@ class ClassificationTask(Task):
         self.log_lr(on_step=True)
         return loss
 
+    def calibrate(self, loader, num_steps=100):
+        model = getattr(self, '_model_ema', self.model)
+        with calibrate_bn(model) as model:
+            for idx, batch in enumerate(loader):
+                if idx > num_steps:
+                    break
+                x, _ = batch
+                with torch.no_grad():
+                    _ = model(x)
+
     def evaluation_step(self, batch, batch_idx, phase='val'):
         model = getattr(self, '_model_ema', self.model)
         x, y = batch
-        if self.calibrate_bn_on_eval:
-            with calibrate_bn(model):
-                y_hat = model(x)
-        else:
-            y_hat = model(x)
+        y_hat = model(x)
         loss = self.loss(y_hat, y)
         metrics = self.metrics(y_hat, y, loss=loss)
         self.log_phase_dict(metrics, phase=phase)
