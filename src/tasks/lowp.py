@@ -1,6 +1,7 @@
 from src.tasks.supervised import ClassificationTask
 from lowp import Lowp
 from lowp.measured import register_qm
+from lowp.measured.modules import calibrate_qmparametrize
 from torchmetrics import functional as FM
 import torch
 from hydra.utils import instantiate
@@ -77,6 +78,21 @@ class QMClassificationTask(ClassificationTask):
                 grads = [p.grad for p in self.parameters() if p.grad is not None]
                 torch._foreach_div_(grads, self.fixed_loss_scale)
         return super().on_before_optimizer_step(optimizer, optimizer_idx)
+
+    def calibrate(self, loader, num_steps=100):
+        super().calibrate(loader, num_steps=num_steps)
+        model = getattr(self, '_model_ema', self.model)
+        model.eval()
+        with calibrate_qmparametrize(model):
+            qupdater = instantiate(self.qupdater_config,
+                                   module=model, _convert_="all")            
+            for idx, batch in enumerate(loader):
+                if idx > num_steps:
+                    break
+                x, _ = self.prepare_batch(batch)
+                with torch.no_grad():
+                    _ = model(x)            
+                qupdater.step()
 
 
 class LowpClassificationTask(ClassificationTask):

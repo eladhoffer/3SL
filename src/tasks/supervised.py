@@ -1,14 +1,9 @@
-from typing import OrderedDict
 from torchmetrics import functional as FM
 import torch.nn.functional as F
-from src.utils_pt.misc import calibrate_bn, no_bn_update
 from src.tasks.task import Task
-from src.models.modules.surrogate_norm import SNorm
-from src.models.modules.utils import FrozenModule, freeze_model_, remove_module, replace_module
+from src.models.modules.utils import freeze_model_, replace_module
 import torch
 from hydra.utils import instantiate
-from math import log
-
 
 class ClassificationTask(Task):
     def __init__(self, model, optimizer, label_smoothing=0.0, **kwargs):
@@ -26,17 +21,6 @@ class ClassificationTask(Task):
         if output is not None and target is not None:
             metrics_dict['accuracy'] = FM.accuracy(output.detach().softmax(dim=-1), target)
         return metrics_dict
-
-    def prepare_batch(self, batch):
-        if isinstance(batch, dict):  # drop unlabled
-            batch = batch['labeled']
-        x, y = batch
-        if getattr(self, 'channels_last', False):
-            x = x.to(memory_format=torch.channels_last)
-        if self.mixup:
-            self.mixup.sample(x.size(0))
-            x = self.mixup(x)
-        return x, y
 
     def log_phase_dict(self, logged_dict, phase='train', **kwargs):
         logged_dict = {f'{k}/{phase}': v for k, v in logged_dict.items()}
@@ -61,16 +45,6 @@ class ClassificationTask(Task):
         self.log_phase_dict(metrics, prog_bar=True, on_epoch=False, on_step=True)
         self.log_lr(on_step=True)
         return loss
-
-    def calibrate(self, loader, num_steps=100):
-        model = getattr(self, '_model_ema', self.model)
-        with calibrate_bn(model) as model:
-            for idx, batch in enumerate(loader):
-                if idx > num_steps:
-                    break
-                x, _ = batch
-                with torch.no_grad():
-                    _ = model(x)
 
     def evaluation_step(self, batch, batch_idx, phase='val'):
         model = getattr(self, '_model_ema', self.model)

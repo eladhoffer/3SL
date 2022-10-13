@@ -4,10 +4,13 @@ from copy import deepcopy
 from hydra.utils import instantiate
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from src.utils_pt.mixup import MixUp
+from src.utils_pt.misc import calibrate_bn
+
 try:
     import habana_frameworks.torch.core as htcore
 except:
     pass
+
 
 class Task(pl.LightningModule):
 
@@ -153,3 +156,27 @@ class Task(pl.LightningModule):
             eps_w = torch._foreach_mul(grads, self.sam_rho / grad_norm)
             torch._foreach_add_(params, eps_w)
         return eps_w
+
+    def prepare_batch(self, batch):
+        if isinstance(batch, dict):  # drop unlabled
+            batch = batch['labeled']
+        x, y = batch
+        if getattr(self, 'channels_last', False):
+            x = x.to(device=self.device,
+                     memory_format=torch.channels_last)
+        else:
+            x = x.to(device=self.device)
+        if self.mixup:
+            self.mixup.sample(x.size(0))
+            x = self.mixup(x)
+        return x, y
+
+    def calibrate(self, loader, num_steps=100):
+        model = getattr(self, '_model_ema', self.model)
+        with calibrate_bn(model) as model:
+            for idx, batch in enumerate(loader):
+                if idx > num_steps:
+                    break
+                x, _ = self.prepare_batch(batch)
+                with torch.no_grad():
+                    _ = model(x)
