@@ -12,7 +12,7 @@ class QMClassificationTask(ClassificationTask):
         self.fixed_loss_scale = kwargs.pop('fixed_loss_scale', None)
         self.log_all_qstats = kwargs.pop('log_all_qstats', False)
         self.adaptive = kwargs.pop('adaptive', True)
-        self.qm_config = kwargs.pop('qm_config', {})
+        self.qm_config = instantiate(kwargs.pop('qm_config'))
 
         # default qupdater
         self.qupdater_config = kwargs.pop('qupdater', {'_target_': 'lowp.measured.QUpdater'})
@@ -65,14 +65,11 @@ class QMClassificationTask(ClassificationTask):
             loss = loss * self.fixed_loss_scale
         return loss
 
-    def on_train_batch_start(self, *kargs, **kwargs) -> None:
+    def on_before_optimizer_step(self, optimizer, optimizer_idx) -> None:
         if self.adaptive:
             self.qupdater.step()
         if self.log_all_qstats:
             self.log_qstats()
-        return super().on_train_batch_start(*kargs, **kwargs)
-
-    def on_before_optimizer_step(self, optimizer, optimizer_idx) -> None:
         if self.fixed_loss_scale is not None:
             with torch.no_grad():
                 grads = [p.grad for p in self.parameters() if p.grad is not None]
@@ -85,13 +82,13 @@ class QMClassificationTask(ClassificationTask):
         model.eval()
         with calibrate_qmparametrize(model):
             qupdater = instantiate(self.qupdater_config,
-                                   module=model, _convert_="all")            
+                                   module=model, _convert_="all")
             for idx, batch in enumerate(loader):
                 if idx > num_steps:
                     break
                 x, _ = self.prepare_batch(batch)
                 with torch.no_grad():
-                    _ = model(x)            
+                    _ = model(x)
                 qupdater.step()
 
 
