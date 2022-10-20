@@ -102,9 +102,9 @@ def train(config: DictConfig) -> Optional[float]:
         trainer.fit(task, datamodule=data)
 
         # Evaluate model on test set after training
-        if not config.trainer.get("fast_dev_run"):
+        if not config.trainer.get("fast_dev_run") :
             log.info("Starting testing!")
-            trainer.test()
+            trainer.test(task, datamodule=data)
 
     # Make sure everything closed properly
     log.info("Finalizing!")
