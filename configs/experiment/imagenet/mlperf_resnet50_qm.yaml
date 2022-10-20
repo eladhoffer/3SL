@@ -15,7 +15,7 @@ defaults:
 
 seed: 12345
 num_gpus: 4
-batch_size: 64
+batch_size: 512
 resume: null
 epochs: 41
 lr_warmup_epochs: 5
@@ -27,7 +27,7 @@ global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batc
 trainer:
   max_steps: ${training_steps:${imagenet_size},${global_batch_size},${epochs}}
   gpus: ${num_gpus}
-  precision: 32
+  precision: bf16
   benchmark: true
   accumulate_grad_batches: ${accumulate_grad_batches}
   log_every_n_steps: 50
@@ -40,21 +40,21 @@ data:
   train:
     loader:
       batch_size: ${batch_size}
-      num_workers: 8
+      num_workers: 32
       image_dtype: float
-      cpu: true
+      cpu: false
   val:
     loader:
       batch_size: ${batch_size}
-      num_workers: 8
+      num_workers: 32
       image_dtype: float
-      cpu: true
+      cpu: false
 
 task:
   _target_: src.tasks.lowp.QMClassificationTask
   model:
     _target_: torchvision.models.resnet50
-  log_all_qstats: false    
+  log_all_qstats: true
   qm_config:
     q_args:
       clip: true
@@ -64,12 +64,17 @@ task:
     q_param_grad_args:
       enable: false
       roundingMode: 0
+    freq_measure_fwd: 1000000
+    freq_measure_bwd:   
+      _target_: lowp.measured.utils.fast_freq_until
+      base_freq: 10
+      end_at_step: 1000
   label_smoothing: 0.1
   optimizer:
     _target_: src.optim.OptimConfig.instantiate
     optimizer:
       _target_: src.optim.lars.LARS
-      lr: 2.0
+      lr: 8.5
       momentum: 0.9
       weight_decay: 0.0002
       nesterov: false
