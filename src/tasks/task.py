@@ -61,10 +61,10 @@ class Task(pl.LightningModule):
                                                 model=self.model, _convert_="all")
             return self.optimizer_regime.optimizer
         elif 'OptimConfig' in optimizer_class:  # regular optimizer
-            self.optimizer_config = instantiate(self.optimizer_config, model=self.model,
-                                                _convert_="all", _recursive_=False)
-            self.configure_regularizers(self.optimizer_config.regularizers())
-            return self.optimizer_config.configuration()
+            optimizer_config = instantiate(self.optimizer_config, model=self.model,
+                                           _convert_="all", _recursive_=False)
+            self.configure_regularizers(optimizer_config.regularizers())
+            return optimizer_config.configuration()
 
     def on_train_batch_start(self, *kargs, **kwargs) -> None:
         if self.optimizer_regime is not None:
