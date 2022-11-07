@@ -166,6 +166,7 @@ class Task(pl.LightningModule):
                      memory_format=torch.channels_last)
         else:
             x = x.to(device=self.device)
+        y = y.to(device=self.device)
         if self.mixup:
             self.mixup.sample(x.size(0))
             x = self.mixup(x)

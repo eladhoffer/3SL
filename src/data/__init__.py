@@ -1,4 +1,4 @@
-from .datamodule import DataModule
+from .datamodule import DataModule, DataConfig
 
 
 def sample_random_indices(dataset):

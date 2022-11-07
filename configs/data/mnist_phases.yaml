@@ -1,0 +1,60 @@
+_target_: src.data.DataModule
+normalize:
+  _target_: src.data.transforms.Normalize
+  mean: [0.5]
+  std: [0.5]
+train:
+  _target_: src.data.DataConfig.from_regime
+  regime:
+    - epoch: 0
+      dataset:
+        subset_classes: [0, 1]
+    - epoch: 1
+      dataset:
+        subset_classes: [2, 3]
+    - epoch: 2
+      dataset:
+        subset_classes: [4, 5]
+    - epoch: 3
+      dataset:
+        subset_classes: [6, 7]
+    - epoch: 4
+      dataset:
+        subset_classes: [8, 9]
+  dataset:
+    name: mnist
+    path: ${data_dir}    
+    split: train
+    transform:
+      _target_: src.data.transforms.Compose
+      transforms:
+        - _target_: src.data.transforms.RandomCrop
+          size: 28
+          padding: 4
+        - _target_: src.data.transforms.ToTensor
+        - ${data.normalize}
+  loader:
+    batch_size: ${batch_size}
+    shuffle: true
+    drop_last: true
+    num_workers: ${num_workers}
+    pin_memory: true
+val:
+  dataset:
+    name: mnist
+    path: ${data_dir}    
+    split: eval
+    transform:
+      _target_: src.data.transforms.Compose
+      transforms:
+        - _target_: src.data.transforms.CenterCrop
+          size: 28
+        - _target_: src.data.transforms.ToTensor
+        - ${data.normalize}
+  loader:
+    batch_size: ${eval_batch_size}
+    shuffle: false
+    drop_last: false
+    num_workers: ${eval_num_workers}
+    pin_memory: true    
+

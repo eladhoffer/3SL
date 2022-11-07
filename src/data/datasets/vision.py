@@ -4,10 +4,25 @@ from torch.utils.data import Subset
 import warnings
 warnings.filterwarnings("ignore", "(Possibly )?corrupt EXIF data", UserWarning)
 
+def split_label_phases(dataset, phase_classes=[[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]]):
+    idxs = [[] for _ in range(len(phase_classes))]
+    for i, (_, label) in enumerate(dataset):
+        for j, classes in enumerate(phase_classes):
+            if label in classes:
+                idxs[j].append(i)
+
+    return [Subset(dataset, indices) for indices in idxs]
+
+def select_by_class(dataset, classes):
+    idxs = []
+    for i, (_, label) in enumerate(dataset):
+        if label in classes:
+            idxs.append(i)
+    return Subset(dataset, idxs)
 
 def vision_datasets(name='cifar10', split='train', transform=None,
                     target_transform=None, download=False, path='~/Datasets',
-                    subset_indices=None, **kwargs):
+                    subset_indices=None, subset_classes=None, **kwargs):
     train = (split == 'train')
     root = os.path.join(os.path.expanduser(path), name)
     if name == 'cifar10':
@@ -56,6 +71,9 @@ def vision_datasets(name='cifar10', split='train', transform=None,
 
     if subset_indices is not None:
         dataset = Subset(dataset, subset_indices)
+    if subset_classes is not None:
+        dataset = select_by_class(dataset, subset_classes)
+        num_classes = len(subset_classes)
     return {
         'dataset': dataset,
         'num_classes': num_classes,
