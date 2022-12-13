@@ -27,7 +27,10 @@ class DataConfig:
 
     @staticmethod
     def _get_dataset(dataset, **kwargs):
-        dataset = instantiate(dataset, _convert_="all")
+        try:
+            dataset = instantiate(dataset, _convert_="all")
+        except:
+            pass
         if isinstance(dataset, dict):  # if dict, assume it's a vision dataset config
             dataset = deepcopy(dataset)
             dataset.update(kwargs)

@@ -31,16 +31,21 @@ trainer:
   benchmark: true
   accumulate_grad_batches: ${accumulate_grad_batches}
   log_every_n_steps: 50
-  flush_logs_every_n_steps: 200  
+
+logger:
+  csv:
+    flush_logs_every_n_steps: 200  
 
 data:
   train:
     loader:
       batch_size: ${batch_size}
+      image_dtype: half
       num_workers: 32
   val:
     loader:
       batch_size: ${batch_size}
+      image_dtype: half
       num_workers: 32
   test: ${data.val}
 

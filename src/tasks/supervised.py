@@ -5,6 +5,7 @@ from src.models.modules.utils import freeze_model_, replace_module
 import torch
 from hydra.utils import instantiate
 
+
 class ClassificationTask(Task):
     def __init__(self, model, optimizer, label_smoothing=0.0, **kwargs):
         super().__init__(model, optimizer, **kwargs)
@@ -19,7 +20,9 @@ class ClassificationTask(Task):
     def metrics(self, output, target=None, **kwargs):
         metrics_dict = {**kwargs}
         if output is not None and target is not None:
-            metrics_dict['accuracy'] = FM.accuracy(output.detach().softmax(dim=-1), target)
+            metrics_dict['accuracy'] = FM.accuracy(
+                output.detach(), target,
+                task="multiclass", num_classes=output.size(-1))
         return metrics_dict
 
     def log_phase_dict(self, logged_dict, phase='train', **kwargs):
@@ -135,7 +138,8 @@ class SupervisedEmbeddingTask(ClassificationTask):
         if target.dtype == torch.long:
             target_embedding = self.embed_target(target)
             pred = output.mm(target_embedding.t())
-            metric['accuracy'] = FM.accuracy(pred.softmax(dim=-1), target)
+            metric['accuracy'] = FM.accuracy(pred, target,
+                                             task="multiclass", num_classes=pred.size(-1))
 
         return metric
 

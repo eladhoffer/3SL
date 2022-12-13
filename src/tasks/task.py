@@ -18,7 +18,9 @@ class Task(pl.LightningModule):
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
                  use_mixup=False, mixup_alpha=1.,
                  use_sam=False, sam_rho=0.05, sam_compare_grad=False,
-                 channels_last=False, jit_model=False, **kwargs):
+                 channels_last=False, jit_model=False, 
+                 compile_model=False, compile_kwargs={},
+                 **kwargs):
         super().__init__(**kwargs)
         self.model = instantiate(model)
         if channels_last:
@@ -26,6 +28,8 @@ class Task(pl.LightningModule):
             self.channels_last = True
         if jit_model:
             self.model = torch.jit.script(self.model)
+        if compile_model:
+            self.model = torch.compile(self.model, **compile_kwargs)
         self.optimizer_config = optimizer
         self.optimizer_regime = None
         self._regularizers = []
