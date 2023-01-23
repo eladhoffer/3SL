@@ -24,7 +24,7 @@ Based on [lightning-hydra-template](https://github.com/ashleve/lightning-hydra-t
 Install dependencies
 ```yaml
 # clone project
-git clone https://github.com/eladhoffer/3SL
+git clone https://github.com/eladhoffer/3SL --recursive
 cd 3SL
 
 # [OPTIONAL] create conda environment
