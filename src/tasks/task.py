@@ -5,7 +5,7 @@ from hydra.utils import instantiate
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from src.utils_pt.mixup import MixUp
 from src.utils_pt.misc import calibrate_bn
-from src.utils_pt.clip_step import clip_norm_, compute_norm
+from src.optim.clip_step import compute_norm, clip_norm_
 
 try:
     import habana_frameworks.torch.core as htcore
@@ -18,8 +18,8 @@ class Task(pl.LightningModule):
     def __init__(self, model, optimizer,
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
                  use_mixup=False, mixup_alpha=1.,
-                 use_sam=False, sam_rho=0.05, sam_compare_grad=False,
-                 log_step_norm=False,
+                 use_sam=False, sam_rho=0.05, sam_optimizer=False,
+                 log_param_norm=False,
                  channels_last=False, jit_model=False,
                  compile_model=False, compile_kwargs={},
                  **kwargs):
@@ -39,7 +39,7 @@ class Task(pl.LightningModule):
         self.ema_bn_momentum = ema_bn_momentum or ema_momentum
         self.use_sam = use_sam
         self.sam_rho = sam_rho
-        self.sam_compare_grad = sam_compare_grad
+        self.sam_optimizer = sam_optimizer
         if use_ema and ema_momentum > 0:
             self.create_ema(device=ema_device)
         if use_sam:
@@ -48,7 +48,7 @@ class Task(pl.LightningModule):
             self.mixup = MixUp(alpha=mixup_alpha)
         else:
             self.mixup = None
-        self.log_step_norm = log_step_norm
+        self.log_param_norm = log_param_norm
         self.save_hyperparameters()
 
     def regularizers(self):
@@ -103,7 +103,7 @@ class Task(pl.LightningModule):
             self.log('param_norm', param_norm, on_step=True, on_epoch=False)
 
     def on_train_batch_end(self, outputs, batch, batch_idx: int) -> None:
-        if self.log_step_norm:
+        if self.log_param_norm:
             self.log_norms()
         return super().on_train_batch_end(outputs, batch, batch_idx)
 
@@ -165,27 +165,37 @@ class Task(pl.LightningModule):
         pass
 
     def manual_step(self, loss, set_to_none=False):
-        if self.use_sam and self.sam_compare_grad:
-            grad_sam = torch.cat([p.grad.view(-1) for p in self.model.parameters()])
         opt = self.optimizers()
         opt.zero_grad(set_to_none=set_to_none)
         self.manual_backward(loss)
-        if self.use_sam and self.sam_compare_grad:
-            grad = torch.cat([p.grad.view(-1) for p in self.model.parameters()])
-            self.log('sam/grad_eps_diff', (grad - grad_sam).norm())
         opt.step()
 
     def sam_step(self, loss, set_to_none=False):
         self.model.zero_grad(set_to_none=set_to_none)
         self.manual_backward(loss)
         with torch.no_grad():
-            params, grads = zip(*[(p, p.grad)
-                                  for p in self.model.parameters() if p.grad is not None])
-            grad_norm = clip_grad_norm_(self.model.parameters(),
-                                        max_norm=float('inf'), norm_type=2.0)
+            params = [p for p in self.model.parameters() if p.grad is not None]
+            if not self.sam_optimizer:  # equivalent to vanilla SGD sam step
+                grads = [p.grad for p in self.model.parameters() if p.grad is not None]
+                grad_norm = clip_grad_norm_(self.model.parameters(),
+                                            max_norm=float('inf'), norm_type=2.0)
+                eps_w = torch._foreach_mul(grads, self.sam_rho / grad_norm)
+
+            else:
+                opt = self.optimizers()
+                optim_state = deepcopy(opt.state_dict())
+                prev_params = deepcopy(params)
+                opt.step()
+                # restore optim state
+                opt.load_state_dict(optim_state)
+                neg_steps = [prev_p - p for (p, prev_p) in zip(params, prev_params)]
+                # restore params with eps_w update
+                torch._foreach_add_(params, neg_steps, alpha=1)
+                step_norm = compute_norm(neg_steps)
+                eps_w = torch._foreach_mul(neg_steps, self.sam_rho / step_norm)
             # needed to revert in update
-            eps_w = torch._foreach_mul(grads, self.sam_rho / grad_norm)
             torch._foreach_add_(params, eps_w)
+
         return eps_w
 
     def prepare_batch(self, batch):

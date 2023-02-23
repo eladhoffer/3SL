@@ -1,0 +1,57 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=fixmatch_cifar10
+defaults:
+  - override /trainer: default.yaml # choose trainer from 'configs/trainer/'
+  - override /task: default.yaml
+  - override /data: cifar10.yaml
+  - override /callbacks: default.yaml
+  - override /logger: many_loggers.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 12345
+resume: null
+batch_size: 128
+num_gpus: 1
+epochs: 100
+accumulate_grad_batches: 1
+global_batch_size: ${mul:${mul:${batch_size},${num_gpus}},${accumulate_grad_batches}}
+
+trainer:
+  max_epochs: ${epochs}
+  benchmark: true
+  gpus: ${num_gpus}
+
+data:
+  train:
+    loader:
+      batch_size: ${batch_size}
+  val:
+    loader:
+      batch_size: 512
+
+task:
+  _target_: src.tasks.supervised.ClassificationTask
+  model:
+    _target_: src.models.resnet.resnet
+    dataset: cifar10
+    width: [160, 320, 640]
+    depth: 28
+  log_param_norm: true
+  optimizer:
+    _target_: src.optim.OptimConfig.instantiate
+    optimizer:
+      _target_: torch.optim.AdamW
+      lr: 1e-3
+      weight_decay: 5e-4 
+    lr_scheduler:
+      _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+      T_max: ${training_steps:${cifar_size},${global_batch_size},${epochs}}
+      eta_min: 0.
+    interval: step
+  use_sam: true
+  sam_rho: 0.05
+  sam_optimizer: true

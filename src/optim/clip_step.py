@@ -32,7 +32,7 @@ def compute_norm(parameters, norm_type: float = 2.0,
 
 
 def clip_norm_(
-        parameters, max_norm: float, norm_type: float = 2.0,
+        parameters, max_norm: float, norm_type: float = 2.0, normalize=False,
         error_if_nonfinite: bool = False) -> torch.Tensor:
     r"""Clips norm of an iterable of parameters.
 
@@ -45,6 +45,7 @@ def clip_norm_(
         max_norm (float or int): max norm
         norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
             infinity norm.
+        normalize (bool): if True, the gradients are normalized to have max_norm norm
         error_if_nonfinite (bool): if True, an error is thrown if the total
             norm of the gradients from :attr:`parameters` is ``nan``,
             ``inf``, or ``-inf``. Default: False (will switch to True in the future)
@@ -68,15 +69,16 @@ def clip_norm_(
     # Note: multiplying by the clamped coef is redundant when the coef is clamped to 1, but doing so
     # avoids a `if clip_coef < 1:` conditional which can require a CPU <=> device synchronization
     # when the gradients do not reside in CPU memory.
-    clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
+    if not normalize:
+        clip_coef = torch.clamp(clip_coef, max=1.0)
     for p in parameters:
-        p.detach().mul_(clip_coef_clamped.to(p.device))
+        p.detach().mul_(clip_coef.to(p.device))
     return total_norm
 
 
 def clip_step_norm_(
         parameters, next_parameters=None, steps=None,
-        max_norm: float = inf, norm_type: float = 2.0, clip_ratio=False, normalize=False,
+        max_norm: float = inf, norm_type: float = 2.0, normalize=False, clip_ratio=False,
         eps=1e-6, error_if_nonfinite: bool = False) -> torch.Tensor:
     assert next_parameters is not None or steps is not None,\
         "Either next_parameters or steps must be provided"
