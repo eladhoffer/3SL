@@ -1,5 +1,31 @@
 from hydra.utils import instantiate
 from src.utils_pt.optim import OptimRegime
+from torch.optim.optimizer import Optimizer
+
+# create Optimizer wrapper with all functions
+
+class OptimizerWrapper(Optimizer):
+    def __init__(self, optimizer):
+        self.optimizer = optimizer
+    
+    @property
+    def param_groups(self):
+        return self.optimizer.param_groups
+
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def add_param_group(self, param_group):
+        self.optimizer.add_param_group(param_group)
+
+    def step(self):
+        self.optimizer.step()
+
+    def state_dict(self) -> dict:
+        return self.optimizers.state_dict()
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        return self.optimizers.load_state_dict(state_dict)
 
 
 class OptimConfig(object):

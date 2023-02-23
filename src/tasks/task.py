@@ -5,6 +5,7 @@ from hydra.utils import instantiate
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from src.utils_pt.mixup import MixUp
 from src.utils_pt.misc import calibrate_bn
+from src.utils_pt.clip_step import clip_norm_, compute_norm
 
 try:
     import habana_frameworks.torch.core as htcore
@@ -18,7 +19,8 @@ class Task(pl.LightningModule):
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
                  use_mixup=False, mixup_alpha=1.,
                  use_sam=False, sam_rho=0.05, sam_compare_grad=False,
-                 channels_last=False, jit_model=False, 
+                 log_step_norm=False,
+                 channels_last=False, jit_model=False,
                  compile_model=False, compile_kwargs={},
                  **kwargs):
         super().__init__(**kwargs)
@@ -46,6 +48,7 @@ class Task(pl.LightningModule):
             self.mixup = MixUp(alpha=mixup_alpha)
         else:
             self.mixup = None
+        self.log_step_norm = log_step_norm
         self.save_hyperparameters()
 
     def regularizers(self):
@@ -94,24 +97,48 @@ class Task(pl.LightningModule):
             regularizer.post_step()
         return super().on_before_zero_grad(optimizer)
 
+    def log_norms(self) -> None:
+        with torch.no_grad():
+            param_norm = compute_norm(self.parameters())
+            self.log('param_norm', param_norm, on_step=True, on_epoch=False)
+
+    def on_train_batch_end(self, outputs, batch, batch_idx: int) -> None:
+        if self.log_step_norm:
+            self.log_norms()
+        return super().on_train_batch_end(outputs, batch, batch_idx)
+
     def training_step_end(self, losses):
         self.update_ema()
         return losses.mean()
 
     def log_lr(self, **kwargs):
-        lrs = []
+        def _log_list(name, values):
+            output = {}
+            if isinstance(values, (list, tuple)):
+                for idx, value in enumerate(values):
+                    if idx == 0:
+                        output[name] = value
+                    else:
+                        output[f'{name}_{idx}'] = value
+            else:
+                output[name] = values
+            return output
+        lrs_log = {}
         if self.optimizer_regime is not None:
-            lrs = self.optimizer_regime.get_lr()
+            lrs_log = _log_list('lr', self.optimizer_regime.get_lr())
         else:
             lr_schedulers = self.lr_schedulers()
             if not isinstance(lr_schedulers, (list, tuple)):
                 lr_schedulers = [lr_schedulers]
-            for lr_scheduler in lr_schedulers:
+            for idx, lr_scheduler in enumerate(lr_schedulers):
                 if lr_scheduler is not None:
-                    lrs += lr_scheduler.get_last_lr()
-        for idx, lr in enumerate(lrs):
-            name = 'lr' if idx == 0 else f'lr_{idx}'
-            self.log(name, lr, **kwargs)
+                    name = 'lr' if idx == 0 else f'lr_{idx}'
+                    lrs_log.update(_log_list(name, lr_scheduler.get_last_lr()))
+                    if hasattr(lr_scheduler, 'get_last_metric'):
+                        values_dict = lr_scheduler.get_last_metric()
+                        for metric, values in values_dict.items():
+                            lrs_log.update(_log_list(metric, values))
+        self.log_dict(lrs_log, **kwargs)
 
     def create_ema(self, device=None):
         self._model_ema = deepcopy(self.model)

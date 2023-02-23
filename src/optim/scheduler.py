@@ -1,4 +1,11 @@
+import math
 from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
+
+
+def cosine_anneal(base, eta_min, T_max):
+    def _value_t(t):
+        return eta_min + (base - eta_min) * (1 + math.cos(math.pi * t / T_max)) / 2
+    return _value_t
 
 
 def polynomial_warmup_and_decay(base_value, warmup_steps, total_steps,
