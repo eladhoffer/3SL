@@ -18,7 +18,7 @@ class Task(pl.LightningModule):
     def __init__(self, model, optimizer,
                  use_ema=False, ema_momentum=0.99, ema_bn_momentum=None, ema_device=None,
                  use_mixup=False, mixup_alpha=1.,
-                 use_sam=False, sam_rho=0.05, sam_optimizer=False,
+                 use_sam=False, sam_rho=0.05, sam_optimizer=False, sam_efficient=False,
                  log_param_norm=False,
                  channels_last=False, jit_model=False,
                  compile_model=False, compile_kwargs={},
@@ -40,6 +40,7 @@ class Task(pl.LightningModule):
         self.use_sam = use_sam
         self.sam_rho = sam_rho
         self.sam_optimizer = sam_optimizer
+        self.sam_efficient = sam_efficient
         if use_ema and ema_momentum > 0:
             self.create_ema(device=ema_device)
         if use_sam:
@@ -172,7 +173,12 @@ class Task(pl.LightningModule):
 
     def sam_step(self, loss, set_to_none=False):
         self.model.zero_grad(set_to_none=set_to_none)
-        self.manual_backward(loss)
+        if self.sam_efficient:
+            if len([p for p in self.model.parameters() if p.grad is not None]) == 0:
+                # backward since this is first step
+                self.manual_backward(loss)
+        else:
+            self.manual_backward(loss)
         with torch.no_grad():
             params = [p for p in self.model.parameters() if p.grad is not None]
             if not self.sam_optimizer:  # equivalent to vanilla SGD sam step
@@ -190,7 +196,7 @@ class Task(pl.LightningModule):
                 opt.load_state_dict(optim_state)
                 neg_steps = [prev_p - p for (p, prev_p) in zip(params, prev_params)]
                 # restore params with eps_w update
-                torch._foreach_add_(params, neg_steps, alpha=1)
+                torch._foreach_add_(params, neg_steps)
                 step_norm = compute_norm(neg_steps)
                 eps_w = torch._foreach_mul(neg_steps, self.sam_rho / step_norm)
             # needed to revert in update
