@@ -1,0 +1,25 @@
+_target_: src.data.DataModule
+train:
+  dataset:
+    _target_: src.data.datasets.text.TextBlockDataset
+    data_dir: ./data/openwebtext
+    seq_length: 1024
+    split: train
+  loader:
+    batch_size: 64
+    shuffle: true
+    drop_last: true
+    num_workers: 8
+    pin_memory: true
+val:
+  dataset:
+    _target_: src.data.datasets.text.TextBlockDataset
+    data_dir: ./data/openwebtext
+    seq_length: 1024
+    split: val
+  loader:
+    batch_size: 64
+    shuffle: false
+    drop_last: false
+    num_workers: 8
+    pin_memory: true

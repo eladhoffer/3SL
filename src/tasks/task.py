@@ -22,9 +22,12 @@ class Task(pl.LightningModule):
                  log_param_norm=False,
                  channels_last=False, jit_model=False,
                  compile_model=False, compile_kwargs={},
-                 **kwargs):
+                 enable_tf32=False, **kwargs):
         super().__init__(**kwargs)
         self.model = instantiate(model)
+        if enable_tf32:
+            torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
+            torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
         if channels_last:
             self.model = self.model.to(memory_format=torch.channels_last)
             self.channels_last = True
@@ -172,12 +175,12 @@ class Task(pl.LightningModule):
         opt.step()
 
     def sam_step(self, loss, set_to_none=False):
-        self.model.zero_grad(set_to_none=set_to_none)
         if self.sam_efficient:
             if len([p for p in self.model.parameters() if p.grad is not None]) == 0:
                 # backward since this is first step
                 self.manual_backward(loss)
         else:
+            self.optimizers().zero_grad(set_to_none=set_to_none)
             self.manual_backward(loss)
         with torch.no_grad():
             params = [p for p in self.model.parameters() if p.grad is not None]
@@ -188,17 +191,17 @@ class Task(pl.LightningModule):
                 eps_w = torch._foreach_mul(grads, self.sam_rho / grad_norm)
 
             else:
-                opt = self.optimizers()
+                opt = self.optimizers()._optimizer
                 optim_state = deepcopy(opt.state_dict())
                 prev_params = deepcopy(params)
-                opt.step()
-                # restore optim state
-                opt.load_state_dict(optim_state)
+                self.optimizers().step()
                 neg_steps = [prev_p - p for (p, prev_p) in zip(params, prev_params)]
                 # restore params with eps_w update
                 torch._foreach_add_(params, neg_steps)
-                step_norm = compute_norm(neg_steps)
-                eps_w = torch._foreach_mul(neg_steps, self.sam_rho / step_norm)
+                # restore optim state
+                opt.load_state_dict(optim_state)
+                # step_norm = compute_norm(neg_steps)
+                eps_w = torch._foreach_mul(neg_steps, self.sam_rho)
             # needed to revert in update
             torch._foreach_add_(params, eps_w)
 

@@ -1,6 +1,4 @@
-from .supervised import ClassificationTask
-from .task import Task
-from torchmetrics import functional as FM
+from src.tasks.supervised import ClassificationTask
 import torch.nn.functional as F
 from src.utils_pt.cross_entropy import cross_entropy
 import torch
@@ -8,6 +6,26 @@ import torch.nn as nn
 import math
 from hydra.utils import instantiate
 from time import time
+
+
+class LanguageModelTask(ClassificationTask):
+    """
+    A task for training a masked language model.
+    """
+
+    def loss(self, output, target):
+        if hasattr(output, 'logits'):
+            output = output.logits
+        output = output.flatten(0, 1)
+        target = target.flatten(0, 1)
+        if self.mixup:
+            target = self.mixup.mix_target(target, output.size(-1))
+        return F.cross_entropy(output, target, label_smoothing=self.label_smoothing)
+
+    def metrics(self, output, target=None, **kwargs):
+        metrics_dict = {**kwargs}
+        metrics_dict['ppl'] = float(2. ** metrics_dict['loss'])
+        return metrics_dict
 
 
 class MaskedLanguageModelTask(ClassificationTask):
