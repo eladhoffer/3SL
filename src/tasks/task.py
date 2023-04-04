@@ -69,10 +69,10 @@ class Task(pl.LightningModule):
         assert optimizer_class is not None, 'optimizer class is not defined'
         if 'OptimRegime' in optimizer_class:
             self.optimizer_regime = instantiate(self.optimizer_config,
-                                                model=self.model, _convert_="all")
+                                                model=self.trainer.model, _convert_="all")
             return self.optimizer_regime.optimizer
         elif 'OptimConfig' in optimizer_class:  # regular optimizer
-            optimizer_config = instantiate(self.optimizer_config, model=self.model,
+            optimizer_config = instantiate(self.optimizer_config, model=self.trainer.model,
                                            _convert_="all", _recursive_=False)
             self.configure_regularizers(optimizer_config.regularizers())
             return optimizer_config.configuration()

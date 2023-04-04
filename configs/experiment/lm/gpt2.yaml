@@ -4,7 +4,7 @@
 # python run.py experiment=roberta_base.yaml
 
 defaults:
-  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /trainer: fsdp.yaml # choose trainer from 'configs/trainer/'
   - override /task: default.yaml
   - override /data: textblock.yaml
   - override /callbacks: default.yaml
@@ -14,16 +14,18 @@ defaults:
 # this allows you to overwrite only specified parameters
 
 seed: 12345
-batch_size: 64
+batch_size: 16
 resume: null
 
 trainer:
   max_steps: 125000
   max_epochs: ${trainer.max_steps}
-  gpus: 4
+  devices: 4
   precision: bf16
   accumulate_grad_batches: 5
   val_check_interval: 4000
+  strategy: 
+    use_orig_params: true
 
 task:
   _target_: src.tasks.text.LanguageModelTask
@@ -71,7 +73,7 @@ data:
       data_dir: /home/ehoffer/Pytorch/nanoGPT/data/openwebtext
       seq_length: 1024
     loader:
-      batch_size: 8
+      batch_size: ${batch_size}
       num_workers: 8
       pin_memory: true
   val:
@@ -79,7 +81,7 @@ data:
       data_dir: ${data.train.dataset.data_dir}
       seq_length: ${data.train.dataset.seq_length}
     loader:
-      batch_size: 8
+      batch_size: ${batch_size}
       num_workers: 8
       pin_memory: true
 

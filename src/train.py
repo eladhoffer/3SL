@@ -10,7 +10,7 @@ from pytorch_lightning import (
     Trainer,
     seed_everything,
 )
-from pytorch_lightning.loggers import LightningLoggerBase
+from pytorch_lightning.loggers import Logger
 
 from src.utils import utils
 try:
@@ -67,7 +67,7 @@ def train(config: DictConfig) -> Optional[float]:
                 plugins.append(hydra.utils.instantiate(plug_conf))
 
     # Init Lightning loggers
-    logger: List[LightningLoggerBase] = []
+    logger: List[Logger] = []
     if "logger" in config:
         for _, lg_conf in config["logger"].items():
             if "_target_" in lg_conf:
