@@ -18,7 +18,7 @@ batch_size: 16
 resume: null
 
 trainer:
-  max_steps: 125000
+  max_steps: 250000
   max_epochs: ${trainer.max_steps}
   devices: 4
   precision: bf16
@@ -53,10 +53,10 @@ task:
       lr: 6e-4
     optimizer_filters:
       - filter:
-          _target_: src.optim.filter.OnlyBiasBN
+          _target_: src.optim.filter.OnlyBiasLN
           exclude: true
       - filter:
-          _target_: src.optim.filter.OnlyBiasBN
+          _target_: src.optim.filter.OnlyBiasLN
         skip_scale: true
         weight_decay: 0.0          
     lr_scheduler:
@@ -72,6 +72,7 @@ data:
     dataset:
       data_dir: /home/ehoffer/Pytorch/nanoGPT/data/openwebtext
       seq_length: 1024
+      random_position: true
     loader:
       batch_size: ${batch_size}
       num_workers: 8
