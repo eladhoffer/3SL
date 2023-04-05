@@ -5,31 +5,32 @@ from torch.utils.data import Dataset
 
 
 class TextBlockDataset(Dataset):
-    def __init__(self, data_dir, split='train', seq_length=1024):
+    def __init__(self, data_dir, split='train', seq_length=1024, random_position=False):
         self.data = np.memmap(os.path.join(data_dir, f'{split}.bin'), dtype=np.uint16, mode='r')
         self.seq_length = seq_length
+        self.random_position = random_position
 
     def __getitem__(self, idx):
-        x = torch.from_numpy(self.data[idx * (self.seq_length + 1): (idx + 1) * (self.seq_length + 1)].astype(np.int64))
+        block = self.seq_length + 1
+        if self.random_position:
+            offset = np.random.randint(0, len(self.data) - block)
+        else:
+            offset = idx * block
+        x = torch.from_numpy(self.data[offset: offset + block].astype(np.int64))
         return x[:-1], x[1:]
 
     def __len__(self):
         return len(self.data) // (self.seq_length + 1)
 
 
-# if __name__ == '__main__':
-#     dset = TextBlockDataset('/home/ehoffer/Pytorch/nanoGPT/data/openwebtext', 'train', 1024)
-
-# class TextTikToken(torch.utils.data.Dataset):
-#     def __init__(self, tokenizer, name="openwebtext", split="train", cache_dir=None, dataset_kwargs={}):
+# class HFTextDataset(torch.utils.data.Dataset):
+#     def __init__(self, tokenizer, name="openwebtext", split="train", cache_dir=None, tokenizer_kwargs={}, dataset_kwargs={}):
 #         super().__init__()
 #         self.tokenizer = tokenizer
 #         self.split = split
-#         self.max_length = max_length
-#         self.break_mode = break_mode
 #         self.cache_dir = cache_dir
 #         if cache_dir is not None:
-#             cache_file = f"{cache_dir}/name_tok_{tokenizer.name_or_path}.arrow"
+#             cache_file = f"{cache_dir}/{name}_tok_{tokenizer.name_or_path}.arrow"
 #         else:
 #             cache_file = None
 #         tokenizer_args = {"return_token_type_ids": False,
@@ -58,10 +59,14 @@ class TextBlockDataset(Dataset):
 #         return len(self.dataset)
 
 
-if __name__ == "__main__":
-    from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained("gpt2")
-    train_dset = Text(tokenizer, split="train", cache_dir="/labdata2/Datasets/wikibooks")
-    split_dataset = train_dset.train_test_split(test_size=0.0005, seed=2357, shuffle=True)
-    # val_dset = WikiBooks(tokenizer, split="train[99.95%:]",
-    #  cache_dir="/home/ehoffer/Datasets/wikibooks")
+# if __name__ == '__main__':
+#     dset = TextBlockDataset('/home/ehoffer/Pytorch/nanoGPT/data/openwebtext', 'train', 1024)
+
+
+# if __name__ == "__main__":
+#     from transformers import AutoTokenizer
+#     tokenizer = AutoTokenizer.from_pretrained("gpt2")
+#     train_dset = Text(tokenizer, split="train", cache_dir="/labdata2/Datasets/wikibooks")
+#     split_dataset = train_dset.train_test_split(test_size=0.0005, seed=2357, shuffle=True)
+#     # val_dset = WikiBooks(tokenizer, split="train[99.95%:]",
+#     #  cache_dir="/home/ehoffer/Datasets/wikibooks")
