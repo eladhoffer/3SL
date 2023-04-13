@@ -77,7 +77,7 @@ def train(config: DictConfig) -> Optional[float]:
     # Init Lightning trainer
     log.info(f"Instantiating trainer <{config.trainer._target_}>")
     trainer: Trainer = hydra.utils.instantiate(
-        config.trainer, callbacks=callbacks, 
+        config.trainer, callbacks=callbacks,
         logger=logger, _convert_="partial"
     )
 
@@ -98,11 +98,12 @@ def train(config: DictConfig) -> Optional[float]:
         trainer.validate(task, datamodule=data,
                          ckpt_path=config.get("evaluate"))
     else:  # Train the model
+        resume_checkpoint = config.get("resume_checkpoint", None)
         log.info("Starting training!")
-        trainer.fit(task, datamodule=data)
+        trainer.fit(task, datamodule=data, ckpt_path=resume_checkpoint)
 
         # Evaluate model on test set after training
-        if not config.trainer.get("fast_dev_run") :
+        if not config.trainer.get("fast_dev_run"):
             log.info("Starting testing!")
             trainer.test(task, datamodule=data)
 
