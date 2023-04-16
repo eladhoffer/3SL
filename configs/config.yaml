@@ -17,6 +17,8 @@ defaults:
   - override hydra/hydra_logging: colorlog
   - override hydra/job_logging: colorlog
 
+# project name identifier
+project: elad-project
 # experiment name identifier
 name: ${now:%Y-%m-%d}/${now:%H-%M-%S}
 # sub-experiment name identifier (multirun)

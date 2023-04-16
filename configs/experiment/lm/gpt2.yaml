@@ -4,17 +4,18 @@
 # python run.py experiment=roberta_base.yaml
 
 defaults:
-  - override /trainer: fsdp.yaml # choose trainer from 'configs/trainer/'
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
   - override /task: default.yaml
   - override /data: textblock.yaml
   - override /callbacks: default.yaml
-  - override /logger: many_loggers.yaml
+  - override /logger: csv_wandb.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
+project: gpt2
 seed: 12345
-batch_size: 16
+batch_size: 8
 resume: null
 
 trainer:
@@ -22,10 +23,8 @@ trainer:
   max_epochs: ${trainer.max_steps}
   devices: 4
   precision: bf16
-  accumulate_grad_batches: 5
+  accumulate_grad_batches: 10
   val_check_interval: 4000
-  strategy: 
-    use_orig_params: true
 
 task:
   _target_: src.tasks.text.LanguageModelTask
