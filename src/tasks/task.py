@@ -44,6 +44,8 @@ class Task(pl.LightningModule):
         self.sam_rho = sam_rho
         self.sam_optimizer = sam_optimizer
         self.sam_efficient = sam_efficient
+        self.compile_model = compile_model
+        self.jit_model = jit_model
         if use_ema and ema_momentum > 0:
             self.create_ema(device=ema_device)
         if use_sam:

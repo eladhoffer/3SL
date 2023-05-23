@@ -10,7 +10,7 @@ from time import time
 
 class LanguageModelTask(ClassificationTask):
     """
-    A task for training a masked language model.
+    A task for training a language model.
     """
 
     def loss(self, output, target):
