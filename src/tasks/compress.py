@@ -1,3 +1,5 @@
+from copy import deepcopy
+import itertools
 import random
 import torch
 import torch.nn.functional as F
@@ -130,12 +132,14 @@ class PrefixCompressStateTask(CompressStateTask):
     A task for compressing state of a transformer based language model.
     """
 
-    def __init__(self, model, optimizer, prefix_length=256, objective='original', **kwargs):
+    def __init__(self, model, optimizer, prefix_length=256, compression_steps=1, use_all_steps=True, objective='original', **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.compress = self._compression_model.compress_fn
         del self._compression_model
         self._prefix_length_range = list(prefix_length)
+        self.compression_steps = compression_steps
         self.objective = objective
+        self.use_all_steps = use_all_steps
 
     def prefix_length(self):
         if len(self._prefix_length_range) == 1:
@@ -173,10 +177,13 @@ class PrefixCompressStateTask(CompressStateTask):
     def training_step(self, batch, batch_idx, optimizer_idx=None):
         self.model.train()
         x, y, state, position_ids = self.prepare_batch(batch)
-        compressed_state = self.compress(self.model, state)
-        y_hat = self.pretrained_model(x, position_ids=position_ids,
-                                      past_key_values=compressed_state)
-        loss = self.loss(y_hat, y)
+        loss = 0
+        for i in range(self.compression_steps):
+            state = self.compress(self.model, state)
+            if self.use_all_steps or i == self.compression_steps - 1:
+                y_hat = self.pretrained_model(x, position_ids=position_ids,
+                                              past_key_values=state)
+                loss += self.loss(y_hat, y)
         metrics = self.metrics(output=y_hat, target=y, loss=loss)
         if self.use_sam:
             metrics['sam_loss'] = self.sam_update(x, y, loss)
@@ -188,20 +195,21 @@ class PrefixCompressStateTask(CompressStateTask):
         model = getattr(self, '_model_ema', self.model)
         model.eval()
         x, y, state, position_ids = self.prepare_batch(batch)
+        # y_hat = self.pretrained_model(x, position_ids=position_ids,
+        #                               past_key_values=state)
+        # loss = self.loss(y_hat, y)
+        # metrics = self.metrics(y_hat, y, loss=loss)
+        # self.log_phase_dict(metrics, phase=f'{phase}(baseline)')
+
+        # y_hat = self.pretrained_model(x, position_ids=position_ids)
+        # loss = self.loss(y_hat, y)
+        # metrics = self.metrics(y_hat, y, loss=loss)
+        # self.log_phase_dict(metrics, phase=f'{phase}(no-state)')
+
+        state = self.compress(model, state,
+                              compression_steps=self.compression_steps)
         y_hat = self.pretrained_model(x, position_ids=position_ids,
                                       past_key_values=state)
-        loss = self.loss(y_hat, y)
-        metrics = self.metrics(y_hat, y, loss=loss)
-        self.log_phase_dict(metrics, phase=f'{phase}(baseline)')
-
-        y_hat = self.pretrained_model(x, position_ids=position_ids)
-        loss = self.loss(y_hat, y)
-        metrics = self.metrics(y_hat, y, loss=loss)
-        self.log_phase_dict(metrics, phase=f'{phase}(no-state)')
-
-        compressed_state = self.compress(model, state)
-        y_hat = self.pretrained_model(x, position_ids=position_ids,
-                                      past_key_values=compressed_state)
         loss = self.loss(y_hat, y)
         metrics = self.metrics(y_hat, y, loss=loss)
         self.log_phase_dict(metrics, phase=phase)

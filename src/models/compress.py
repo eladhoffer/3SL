@@ -5,6 +5,7 @@ from torch import nn
 import transformers
 from transformers import AutoTokenizer
 from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel, GPT2Attention, GPT2Config
+from src.models.modules.conv_attn import ConvMultiheadAttention
 
 
 class CompressState(nn.Module):
@@ -73,7 +74,15 @@ class RecurrentState(CompressState):
         if self.state_length is not None:
             state = state[:, :, -self.state_length:]
         if self.ratio > 1:
+            # make sure last state is taken
+            # state = state[:, :, ::self.ratio]
+            last = None
+            if state.shape[2] % (self.ratio - 1) != 0:
+                last = state[:, :, -1:]
             state = state[:, :, ::self.ratio]
+            if last is not None:
+                state = torch.cat([state, last], dim=2)
+
         return state
 
     def modify_mask(self, mask=None):
@@ -110,45 +119,52 @@ class RecurrentState(CompressState):
         return state, present
 
 
-class AttentedState(RecurrentState):
-    def __init__(self, config, state_length=128, ratio=1, residual=False):
+class ConvAttnState(CompressState):
+    def __init__(self, kernel_size, stride=1, padding=0, hidden_size=None, num_heads=None, residual=False,
+                 state_properties={'num_heads': 12, 'hidden_size': 64}, **kwargs):
         super().__init__()
-        self.state_length = state_length
         self.residual = residual
-        self.attention = GPT2Attention(config)
-        self.ratio = ratio
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        state_size = state_properties['hidden_size'] * state_properties['num_heads']
+        hidden_size = hidden_size or state_size
+        self.cattn = ConvMultiheadAttention(hidden_size, num_heads or state_properties['num_heads'],
+                                            kernel_size, stride=stride, padding=padding,
+                                            batch_first=True, **kwargs)
 
-    def modify_mask(self, mask=None):
-        # no masking for rnn induced compression
-        return None
+        # def _proj(in_size, out_size):
+        #     if in_size != out_size:
+        #         module = nn.Linear(in_size, out_size)
+        #     else:
+        #         module = nn.Identity()
+        #     return module
 
-    @torch.no_grad()
-    def modify_bias(self, bias):
-        # bias is of shape [1, 1, seq_length, seq_length]
-        # set it so that the last self.state_length are not masked
-        T = bias.size(-1)
-        t = torch.arange(T, device=bias.device).view(1, 1, -1, 1)
-        mask = t - t.transpose(-1, -2) <= self.state_length - 1
-        return bias.masked_fill_(~mask, False)
+        self.input_proj = nn.Linear(state_size, hidden_size)
+        self.ln = nn.LayerNorm(hidden_size)
+        self.activation = nn.ReLU()
+        self.output_proj = nn.Linear(hidden_size, state_size)
+
+    def discard(self, state):
+        return state
 
     def forward(self, state, past=None):
         # single state is (batch, num_heads, seq_length, hidden_size)
         (batch, num_heads, _, hidden_size) = state.shape
+        # (batch, seq_length, num_heads * hidden_size)
         state = state.permute(0, 2, 1, 3).flatten(2, 3)
         residual = state if self.residual else None
         state = self.input_proj(state)
-        if past is not None:
-            past, rnn_state = past
-        else:
-            rnn_state = None
-        state, rnn_state = self.rnn(state, rnn_state)
+        state, _ = self.cattn(state, state, state)
+        state = self.activation(self.ln(state))
         state = self.output_proj(state)
         if residual is not None:
+            residual = torch.nn.functional.avg_pool1d(residual.permute(0, 2, 1), 1, self.stride).permute(0, 2, 1)
             state = state + residual
-        state = self.join_states(past, state)
-        present = (self.discard(state), rnn_state)
         state = state.reshape(batch, -1, num_heads, hidden_size)
         state = state.permute(0, 2, 1, 3)
+        state = self.join_states(past, state)
+        present = state
         return state, present
 
 
@@ -245,17 +261,66 @@ class GPT2RecurrentCompression(nn.Module):
 
     # do not require self
     @staticmethod
-    def compress_fn(compressors, past_key_values, retain_state=False):
-        compressed_past_key_values = []
-        for idx in range(len(past_key_values)):
-            compressor = compressors[idx]
-            _, c_key = compressor['key'](past_key_values[idx][0])
-            _, c_value = compressor['value'](past_key_values[idx][1])
-            if not retain_state:
-                c_key = c_key[0]
-                c_value = c_value[0]
-            compressed_past_key_values.append((c_key, c_value))
-        return tuple(compressed_past_key_values)
+    def compress_fn(compressors, past_key_values, compression_steps=1, retain_state=False):
+        for _ in range(compression_steps):
+            compressed_past_key_values = []
+            for idx in range(len(past_key_values)):
+                compressor = compressors[idx]
+                _, c_key = compressor['key'](past_key_values[idx][0])
+                _, c_value = compressor['value'](past_key_values[idx][1])
+                if not retain_state:
+                    c_key = c_key[0]
+                    c_value = c_value[0]
+                compressed_past_key_values.append((c_key, c_value))
+            past_key_values = tuple(compressed_past_key_values)
+        return past_key_values
 
-    def compress(self, past_key_values, retain_state=False):
-        return self.compress_fn(self.compressors, past_key_values, retain_state)
+    def compress(self, past_key_values, compression_steps=1, retain_state=False):
+        return self.compress_fn(self.compressors, past_key_values, compression_steps, retain_state)
+
+
+class GPT2ConvAttnCompression(nn.Module):
+    def __init__(self, pretrained_model, hidden_size=None, num_heads=None, kernel_size=3, stride=2, padding=1, residual=False,
+                 wrap_pretrained=True, **cattn_config):
+        super().__init__()
+        self.compressors = nn.ModuleList()
+        self.pretrained_model = pretrained_model
+        for p in self.pretrained_model.parameters():
+            p.requires_grad = False
+
+        for module in self.pretrained_model.modules():
+            if isinstance(module, GPT2Attention):
+                state_properties = {'num_heads': module.num_heads, 'hidden_size': module.head_dim}
+                config = dict(hidden_size=hidden_size, num_heads=num_heads,
+                              kernel_size=kernel_size, stride=stride,
+                              padding=padding, residual=residual,
+                              state_properties=state_properties, **cattn_config)
+                compressors = nn.ModuleDict({
+                    'key': ConvAttnState(**config),
+                    'value': ConvAttnState(**config)
+                })
+                if wrap_pretrained:
+                    module.compress_key = compressors['key']
+                    module.compress_value = compressors['value']
+                    module.forward = types.MethodType(CompressedGPT2Attention.forward, module)
+                    # module.compress_key.modify_bias(module.bias)
+                self.compressors.append(compressors)
+
+    def forward(self, *args, **kwargs):
+        return self.pretrained_model(*args, **kwargs)
+
+    # do not require self
+    @staticmethod
+    def compress_fn(compressors, past_key_values, compression_steps=1, retain_state=False):
+        for _ in range(compression_steps):
+            compressed_past_key_values = []
+            for idx in range(len(past_key_values)):
+                compressor = compressors[idx]
+                c_key, _ = compressor['key'](past_key_values[idx][0])
+                c_value, _ = compressor['value'](past_key_values[idx][1])
+                compressed_past_key_values.append((c_key, c_value))
+            past_key_values = tuple(compressed_past_key_values)
+        return past_key_values
+
+    def compress(self, past_key_values, compression_steps=1, retain_state=False):
+        return self.compress_fn(self.compressors, past_key_values, compression_steps, retain_state)
