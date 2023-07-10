@@ -67,7 +67,8 @@ class SNorm(torch.nn.modules.batchnorm._BatchNorm):
                               self.training, self.momentum, self.eps, self.num_surrogates, self.dims)
 
     @classmethod
-    def convert_snorm(cls, module, replaced_layers=[torch.nn.modules.batchnorm._BatchNorm], modify_momentum=None):
+    def convert_snorm(cls, module, replaced_layers=[torch.nn.modules.batchnorm._BatchNorm],
+                      add_surrogate=False, modify_momentum=None):
         r"""Helper function to convert normalization layers in the model to
         `SNorm` layer.
 
@@ -114,6 +115,8 @@ class SNorm(torch.nn.modules.batchnorm._BatchNorm):
             module_output.add_module(
                 name, cls.convert_snorm(child, replaced_layers, modify_momentum))
         del module
+        if add_surrogate:
+            module_output = nn.Sequential(AddSurrogate(), module_output, RemoveSurrogate())
         return module_output
 
 
@@ -125,8 +128,38 @@ class SNorm2d(SNorm):
                                       track_running_stats, dims)
 
 
+class AddSurrogate(nn.Module):
+    def __init__(self, dim=0, num_surrogates=1):
+        super(AddSurrogate, self).__init__()
+        self.dim = dim
+        self.num_surrogates = num_surrogates
+
+    def forward(self, x):
+        with torch.no_grad():
+            surr = torch.empty_like(x.narrow(self.dim, 0, self.num_surrogates))
+            surr.normal_()
+        x = torch.cat([surr, x], dim=self.dim)
+        return x
+
+
+class RemoveSurrogate(nn.Module):
+    def __init__(self, dim=0, num_surrogates=1):
+        super(RemoveSurrogate, self).__init__()
+        self.dim = dim
+        self.num_surrogates = num_surrogates
+
+    def forward(self, x):
+        x = x.narrow(self.dim, self.num_surrogates, x.size(self.dim) - self.num_surrogates)
+        return x
+
+
 if __name__ == '__main__':
-    x = torch.randn(64, 256, 32, 32).cuda()
-    rmrean = torch.zeros(256).cuda()
-    rvar = torch.ones(256).cuda()
-    out = surrogate_norm(x, rmrean, rvar)
+    from torchvision.models import resnet18
+    x = torch.randn(64, 3, 32, 32).cuda()
+    model = resnet18().cuda()
+    model = SNorm.convert_snorm(model ,add_surrogate=True)
+    print(model)
+    y = model(x)
+    # rmrean = torch.zeros(256).cuda()
+    # rvar = torch.ones(256).cuda()
+    # out = surrogate_norm(x, rmrean, rvar)
