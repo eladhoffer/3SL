@@ -3,6 +3,7 @@ import torch.nn as nn
 import logging
 from torch import Tensor
 from typing import List, Optional
+from torch.distributions.chi2 import Chi2
 
 
 @torch.jit.script
@@ -41,14 +42,28 @@ class SNorm(torch.nn.modules.batchnorm._BatchNorm):
     """BatchNorm with mean-only normalization"""
 
     def __init__(self, num_features, eps=1e-5, momentum=1., affine=True,
-                 track_running_stats=True, num_surrogates=1, dims=[0, 2, 3]):
+                 track_running_stats=True, num_surrogates=1, dims=[0, 2, 3],
+                 inject_noise=False, ghost_batch_size=-1):
         super(SNorm, self).__init__(num_features, eps, momentum, affine,
                                     track_running_stats)
         self.num_surrogates = num_surrogates
         self.dims = dims
+        self.inject_noise = inject_noise
+        self.ghost_batch_size = ghost_batch_size
 
     def forward(self, x):
-        return surrogate_norm(x, self.running_mean, self.running_var, self.weight, self.bias,
+        weight = self.weight
+        bias = self.bias
+        if self.training and self.inject_noise:
+            with torch.no_grad():
+                # var, mean = torch.var_mean(x[:self.ghost_batch_size], self.dims)
+                N = self.ghost_batch_size
+                noise_mul = (Chi2(torch.empty_like(weight)).sample() / N).rsqrt()
+                noise_add = torch.empty_like(weight).normal_().mul(1 / N)
+            weight = weight * noise_mul
+            bias = bias - weight * noise_add
+
+        return surrogate_norm(x, self.running_mean, self.running_var, weight, bias,
                               self.training, self.momentum, self.eps, self.num_surrogates, self.dims)
 
     @classmethod
