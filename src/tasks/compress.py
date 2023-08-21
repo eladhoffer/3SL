@@ -132,7 +132,8 @@ class PrefixCompressStateTask(CompressStateTask):
     A task for compressing state of a transformer based language model.
     """
 
-    def __init__(self, model, optimizer, prefix_length=256, compression_steps=1, use_all_steps=True, objective='original', **kwargs):
+    def __init__(self, model, optimizer, prefix_length=256, compression_steps=1,
+                 use_all_steps=True, objective='original', state_type='past_key_values', **kwargs):
         super().__init__(model, optimizer, **kwargs)
         self.compress = self._compression_model.compress_fn
         del self._compression_model
@@ -140,6 +141,7 @@ class PrefixCompressStateTask(CompressStateTask):
         self.compression_steps = compression_steps
         self.objective = objective
         self.use_all_steps = use_all_steps
+        self.state_type = state_type
 
     def prefix_length(self):
         if len(self._prefix_length_range) == 1:
@@ -161,8 +163,11 @@ class PrefixCompressStateTask(CompressStateTask):
         x, y = batch
         prefix_length = self.prefix_length()
         with torch.no_grad():
-            output = self.pretrained_model(x[:, :prefix_length], use_cache=True)
-            state = output.past_key_values
+            if self.state_type == 'past_key_values':
+                output = self.pretrained_model(x[:, :prefix_length], use_cache=True)
+                state = output.past_key_values
+            elif self.state_type == 'inputs_embeds':
+                state = self.pretrained_model.transformer.wte(x[:, :prefix_length])
         x = x[:, prefix_length:]
         position_ids = prefix_length + torch.arange(x.size(-1)).unsqueeze(0).to(x.device)
 
@@ -170,9 +175,17 @@ class PrefixCompressStateTask(CompressStateTask):
             y = y[:, prefix_length:]
         elif self.objective == 'distill':
             with torch.no_grad():
-                y = self.pretrained_model(x, position_ids=position_ids,
-                                          past_key_values=state)
+                y = self.forward_state(x, state, position_ids=position_ids)
         return x, y, state, position_ids
+
+    def forward_state(self, x, state, **kwargs):
+        if self.state_type == 'past_key_values':
+            return self.pretrained_model(x, past_key_values=state, **kwargs)
+        elif self.state_type == 'inputs_embeds':
+            output = self.pretrained_model(inputs_embeds=state, use_cache=True)
+            return self.pretrained_model(x, past_key_values=output.past_key_values, **kwargs)
+        else:
+            raise ValueError(f'Unknown state type {self.state_type}')
 
     def training_step(self, batch, batch_idx, optimizer_idx=None):
         self.model.train()
@@ -181,8 +194,8 @@ class PrefixCompressStateTask(CompressStateTask):
         for i in range(self.compression_steps):
             state = self.compress(self.model, state)
             if self.use_all_steps or i == self.compression_steps - 1:
-                y_hat = self.pretrained_model(x, position_ids=position_ids,
-                                              past_key_values=state)
+                y_hat = self.forward_state(x, state,
+                                           position_ids=position_ids)
                 loss += self.loss(y_hat, y)
         metrics = self.metrics(output=y_hat, target=y, loss=loss)
         if self.use_sam:
@@ -208,8 +221,7 @@ class PrefixCompressStateTask(CompressStateTask):
 
         state = self.compress(model, state,
                               compression_steps=self.compression_steps)
-        y_hat = self.pretrained_model(x, position_ids=position_ids,
-                                      past_key_values=state)
+        y_hat = self.forward_state(x, state, position_ids=position_ids)
         loss = self.loss(y_hat, y)
         metrics = self.metrics(y_hat, y, loss=loss)
         self.log_phase_dict(metrics, phase=phase)

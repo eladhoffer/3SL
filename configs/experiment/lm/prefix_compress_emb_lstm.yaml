@@ -1,0 +1,104 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=roberta_base.yaml
+
+defaults:
+  - override /trainer: ddp.yaml # choose trainer from 'configs/trainer/'
+  - override /task: default.yaml
+  - override /data: textblock.yaml
+  - override /callbacks: default.yaml
+  - override /logger: csv_wandb.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+project: compress_gpt2
+seed: 12345
+batch_size: 1
+resume: null
+
+trainer:
+  max_steps: 50000
+  max_epochs: ${trainer.max_steps}
+  devices: [2, 3]
+  precision: 16
+  accumulate_grad_batches: 1
+  val_check_interval: 2000
+  gradient_clip_val: 1.
+
+task:
+  _target_: src.tasks.compress.PrefixCompressStateTask
+  model: 
+    _target_: src.models.compress.EmbRecurrentCompression
+    pretrained_model:
+      _target_: transformers.GPT2LMHeadModel.from_pretrained
+      pretrained_model_name_or_path: "MBZUAI/LaMini-GPT-1.5B"
+    wrap_pretrained: false
+    rnn_type: LSTM
+    state_length: null
+    ratio: 2
+    residual: true
+    state_properties:
+      hidden_size: 1600
+    rnn_config:
+      hidden_size: 512
+      bidirectional: true
+  state_type: inputs_embeds
+  compression_steps: 1
+  prefix_length: 
+    - 768
+    - 768
+  compile_model: false
+  enable_tf32: true
+  objective: distill
+  optimizer:
+    _target_: src.optim.OptimConfig.instantiate
+    optimizer:
+      _target_: torch.optim.AdamW
+      betas:
+        - 0.9
+        - 0.95
+      eps: 1e-6
+      weight_decay: 0.01
+      lr: 1e-3
+    optimizer_filters:
+      - filter:
+          _target_: src.optim.filter.OnlyBiasLN
+          exclude: true
+      - filter:
+          _target_: src.optim.filter.OnlyBiasLN
+        skip_scale: true
+        weight_decay: 0.0          
+    lr_scheduler:
+      _target_: src.optim.scheduler.LinearWarmUpDecay
+      lr: 1e-3
+      init_lr: 1e-5
+      warmup_steps: 500
+      total_steps: ${trainer.max_steps}
+    interval: step    
+
+data:
+  train:
+    dataset:
+      data_dir: /home/ehoffer/Pytorch/nanoGPT/data/openwebtext
+      seq_length: 1024
+      random_position: true
+    loader:
+      batch_size: ${batch_size}
+      num_workers: 8
+      pin_memory: true
+  val:
+    dataset:
+      data_dir: ${data.train.dataset.data_dir}
+      seq_length: ${data.train.dataset.seq_length}
+    loader:
+      batch_size: ${batch_size}
+      num_workers: 8
+      pin_memory: true
+
+
+callbacks:
+  model_checkpoint:
+    monitor: "loss/val" 
+

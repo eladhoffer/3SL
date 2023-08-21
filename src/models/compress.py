@@ -53,7 +53,7 @@ class RecurrentState(CompressState):
         self.ratio = ratio
         self.state_length = state_length
         self.residual = residual
-        state_size = state_properties['hidden_size'] * state_properties['num_heads']
+        state_size = state_properties['hidden_size'] * state_properties.get('num_heads', 1)
         rnn_config.setdefault('batch_first', True)
         rnn_config.setdefault('bidirectional', False)
         rnn_config.setdefault('input_size', state_size)
@@ -67,7 +67,8 @@ class RecurrentState(CompressState):
             return module
 
         self.input_proj = _proj(state_size, rnn_config['input_size'])
-        self.output_proj = _proj(rnn_config['hidden_size'], state_size)
+        self.output_proj = _proj(rnn_config['hidden_size'] *
+                                 (2 if rnn_config['bidirectional'] else 1), state_size)
         self.rnn = rnnf(**rnn_config)
 
     def discard(self, state):
@@ -119,31 +120,82 @@ class RecurrentState(CompressState):
         return state, present
 
 
+class RecurrentEmb(RecurrentState):
+    def __init__(self, rnn_type='LSTM', state_length=128, ratio=1, residual=False,
+                 state_properties={'num_heads': 1, 'hidden_size': 12 * 64}, rnn_config={'num_layers': 1}):
+        super().__init__(rnn_type=rnn_type, state_length=state_length, ratio=ratio, residual=residual,
+                         state_properties=state_properties, rnn_config=rnn_config)
+
+    # def join_states(self, *states):
+    #     state = torch.cat([s for s in states if s is not None], dim=-2)
+    #     return state
+
+    def discard(self, state):
+        if self.state_length is not None:
+            state = state[:, -self.state_length:]
+        if self.ratio > 1:
+            # make sure last state is taken
+            # state = state[:, ::self.ratio]
+            last = None
+            if state.shape[2] % (self.ratio - 1) != 0:
+                last = state[:, -1:]
+            state = state[:, ::self.ratio]
+            if last is not None:
+                state = torch.cat([state, last], dim=1)
+
+        return state
+
+    def forward(self, state, past=None):
+        # single state is (batch, seq_length, hidden_size)
+        residual = state if self.residual else None
+        state = self.input_proj(state)
+        if past is not None:
+            past, rnn_state = past
+        else:
+            rnn_state = None
+        state, rnn_state = self.rnn(state, rnn_state)
+        state = self.discard(state)
+        state = self.output_proj(state)
+        if residual is not None:
+            residual = self.discard(residual)
+            state = state + residual
+        # state = self.join_states(past, state)
+        present = (state, rnn_state)
+        return state, present
+
+
 class ConvAttnState(CompressState):
     def __init__(self, kernel_size, stride=1, padding=0, hidden_size=None, num_heads=None, residual=False,
-                 state_properties={'num_heads': 12, 'hidden_size': 64}, **kwargs):
+                 input_proj=True, output_proj=True, state_properties={'num_heads': 12, 'hidden_size': 64}, **kwargs):
         super().__init__()
         self.residual = residual
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
+        self.input_proj = input_proj
         state_size = state_properties['hidden_size'] * state_properties['num_heads']
         hidden_size = hidden_size or state_size
-        self.cattn = ConvMultiheadAttention(hidden_size, num_heads or state_properties['num_heads'],
+
+        def _proj(in_size, out_size):
+            if in_size != out_size:
+                module = nn.Linear(in_size, out_size)
+            else:
+                module = nn.Identity()
+            return module
+        self.activation = nn.ReLU()
+        if input_proj:
+            input_size = hidden_size
+            self.input_proj = nn.Linear(state_size, hidden_size)
+        else:
+            input_size = state_size
+            self.input_proj = None
+        if output_proj:
+            self.output_proj = nn.Linear(hidden_size, state_size)
+        else:
+            self.output_proj = None
+        self.cattn = ConvMultiheadAttention(input_size, num_heads or state_properties['num_heads'],
                                             kernel_size, stride=stride, padding=padding,
                                             batch_first=True, **kwargs)
-
-        # def _proj(in_size, out_size):
-        #     if in_size != out_size:
-        #         module = nn.Linear(in_size, out_size)
-        #     else:
-        #         module = nn.Identity()
-        #     return module
-
-        self.input_proj = nn.Linear(state_size, hidden_size)
-        self.ln = nn.LayerNorm(hidden_size)
-        self.activation = nn.ReLU()
-        self.output_proj = nn.Linear(hidden_size, state_size)
 
     def discard(self, state):
         return state
@@ -154,12 +206,17 @@ class ConvAttnState(CompressState):
         # (batch, seq_length, num_heads * hidden_size)
         state = state.permute(0, 2, 1, 3).flatten(2, 3)
         residual = state if self.residual else None
-        state = self.input_proj(state)
+        if self.input_proj is not None:
+            state = self.input_proj(state)
+            state = self.activation(state)
         state, _ = self.cattn(state, state, state)
-        state = self.activation(self.ln(state))
-        state = self.output_proj(state)
+        if self.output_proj is not None:
+            state = self.activation(state)
+            state = self.output_proj(state)
+
         if residual is not None:
-            residual = torch.nn.functional.avg_pool1d(residual.permute(0, 2, 1), 1, self.stride).permute(0, 2, 1)
+            residual = torch.nn.functional.avg_pool1d(
+                residual.permute(0, 2, 1), 1, self.stride, 0).permute(0, 2, 1)
             state = state + residual
         state = state.reshape(batch, -1, num_heads, hidden_size)
         state = state.permute(0, 2, 1, 3)
@@ -277,6 +334,37 @@ class GPT2RecurrentCompression(nn.Module):
 
     def compress(self, past_key_values, compression_steps=1, retain_state=False):
         return self.compress_fn(self.compressors, past_key_values, compression_steps, retain_state)
+
+
+class EmbRecurrentCompression(nn.Module):
+    def __init__(self, pretrained_model, rnn_type='LSTM', state_length=128, ratio=1, residual=False,
+                 rnn_config={'num_layers': 1}, state_properties={}, wrap_pretrained=True):
+        super().__init__()
+        self.state_length = state_length
+        self.ratio = ratio
+        self.pretrained_model = pretrained_model
+        for p in self.pretrained_model.parameters():
+            p.requires_grad = False
+
+        config = dict(state_length=state_length, ratio=ratio, residual=residual,
+                      rnn_type=rnn_type, rnn_config=rnn_config, state_properties=state_properties)
+        if wrap_pretrained:
+            raise NotImplementedError
+        self.compressors = RecurrentEmb(**config)
+
+    def forward(self, *args, **kwargs):
+        return self.pretrained_model(*args, **kwargs)
+
+    # do not require self
+    @staticmethod
+    def compress_fn(compressor, state, compression_steps=1, retain_state=False):
+        compressed_state = state
+        for _ in range(compression_steps):
+            _, (compressed_state, _) = compressor(compressed_state)
+        return compressed_state
+
+    def compress(self, state, compression_steps=1, retain_state=False):
+        return self.compress_fn(self.compressors, state, compression_steps, retain_state)
 
 
 class GPT2ConvAttnCompression(nn.Module):
