@@ -21,29 +21,32 @@ resume: null
 trainer:
   max_steps: 50000
   max_epochs: ${trainer.max_steps}
-  devices: [0, 1]
-  precision: 16
-  accumulate_grad_batches: 1
+  devices: [0,1]
+  precision: bf16
+  accumulate_grad_batches: 16
   val_check_interval: 2000
-  gradient_clip_val: 1.
+  gradient_clip_val: 5.
 
 task:
   _target_: src.tasks.compress.PrefixCompressStateTask
   model: 
-    _target_: src.models.compress.EmbRecurrentCompression
+    _target_: src.models.compress.EmbCompression
     pretrained_model:
       _target_: transformers.GPT2LMHeadModel.from_pretrained
       pretrained_model_name_or_path: "MBZUAI/LaMini-GPT-1.5B"
-    wrap_pretrained: false
-    rnn_type: LSTM
-    state_length: null
-    ratio: 2
-    residual: false
-    state_properties:
+    compressor:
+      _target_: src.models.compress.CompressAttnBlockState
+      input_size: 1600
       hidden_size: 1600
-    rnn_config:
-      hidden_size: 2048
-      bidirectional: false
+      intermediate_size: 2048
+      num_heads: 4
+      ratio: 2
+      num_blocks: 4
+      reduction_layer: first
+      reduction_mode: sample
+      # max_position_embeddings: 1024
+      residual: false
+    wrap_pretrained: false
   state_type: hidden_states
   compression_steps: 1
   prefix_length: 

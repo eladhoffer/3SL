@@ -135,7 +135,7 @@ class PrefixCompressStateTask(CompressStateTask):
     def __init__(self, model, optimizer, prefix_length=256, compression_steps=1,
                  use_all_steps=True, objective='original', state_type='past_key_values', **kwargs):
         super().__init__(model, optimizer, **kwargs)
-        self.compress = self._compression_model.compress_fn
+        self.compress = self._compression_model.forward_fn
         del self._compression_model
         self._prefix_length_range = list(prefix_length)
         self.compression_steps = compression_steps
@@ -168,6 +168,9 @@ class PrefixCompressStateTask(CompressStateTask):
                 state = output.past_key_values
             elif self.state_type == 'inputs_embeds':
                 state = self.pretrained_model.transformer.wte(x[:, :prefix_length])
+            elif self.state_type == 'hidden_states':
+                output = self.pretrained_model(x[:, :prefix_length], output_hidden_states=True)
+                state = output.hidden_states[-1]
         x = x[:, prefix_length:]
         position_ids = prefix_length + torch.arange(x.size(-1)).unsqueeze(0).to(x.device)
 
@@ -182,6 +185,9 @@ class PrefixCompressStateTask(CompressStateTask):
         if self.state_type == 'past_key_values':
             return self.pretrained_model(x, past_key_values=state, **kwargs)
         elif self.state_type == 'inputs_embeds':
+            output = self.pretrained_model(inputs_embeds=state, use_cache=True)
+            return self.pretrained_model(x, past_key_values=output.past_key_values, **kwargs)
+        elif self.state_type == 'hidden_states':
             output = self.pretrained_model(inputs_embeds=state, use_cache=True)
             return self.pretrained_model(x, past_key_values=output.past_key_values, **kwargs)
         else:

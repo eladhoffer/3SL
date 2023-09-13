@@ -6,6 +6,7 @@ import transformers
 from transformers import AutoTokenizer
 from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel, GPT2Attention, GPT2Config
 from src.models.modules.conv_attn import ConvMultiheadAttention
+from transformers.models.llama.modeling_llama import LlamaConfig, LlamaRMSNorm
 
 
 class CompressState(nn.Module):
@@ -137,7 +138,7 @@ class RecurrentEmb(RecurrentState):
             # make sure last state is taken
             # state = state[:, ::self.ratio]
             last = None
-            if state.shape[2] % (self.ratio - 1) != 0:
+            if state.shape[1] % (self.ratio - 1) != 0:
                 last = state[:, -1:]
             state = state[:, ::self.ratio]
             if last is not None:
@@ -221,6 +222,237 @@ class ConvAttnState(CompressState):
         state = state.reshape(batch, -1, num_heads, hidden_size)
         state = state.permute(0, 2, 1, 3)
         state = self.join_states(past, state)
+        present = state
+        return state, present
+
+
+class LlamaMLP(nn.Module):
+    def __init__(self, hidden_size=4096, intermediate_size=11008):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.act_fn = nn.GELU()  # ACT2FN[config.hidden_act]
+
+    def forward(self, x):
+        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+
+
+def sample_ratio_last(x, ratio):
+    # make sure last state is taken
+    last = None
+    if x.shape[1] % (ratio - 1) != 0:
+        last = x[:, -1:]
+    x = x[:, ::ratio]
+    if last is not None:
+        x = torch.cat([x, last], dim=1)
+    return x
+
+
+class LlamaDecoderLayer(nn.Module):
+    def __init__(self, hidden_size=4096, intermediate_size=11008, num_heads=16, rms_norm_eps=1e-6, ratio=1,
+                 reduction_mode='avg', max_position_embeddings=1024):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.self_attn = torch.nn.MultiheadAttention(hidden_size, num_heads, batch_first=True)
+        self.mlp = LlamaMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
+        self.input_layernorm = LlamaRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.ratio = ratio
+        self.reduction_mode = reduction_mode
+        if self.ratio > 1 and self.reduction_mode == 'emb':
+            self.reduction_emb = nn.Embedding(max_position_embeddings, hidden_size)
+
+    def reduce(self, x):
+        if self.ratio == 1:
+            return x
+        sz = int(x.shape[1] // self.ratio)
+        if self.reduction_mode == 'avg':
+            x = x.permute(0, 2, 1)
+            x = torch.nn.functional.adaptive_avg_pool1d(x, sz)
+            return x.permute(0, 2, 1)
+        elif self.reduction_mode == 'sample':
+            assert int(self.ratio) == self.ratio, 'ratio must be an integer for sample'
+            return sample_ratio_last(x, self.ratio)
+        elif self.reduction_mode == 'emb':
+            out = self.reduction_emb(torch.arange(sz, device=x.device).unsqueeze(0))
+            return out
+
+    def forward(
+            self,
+            hidden_states: torch.Tensor):
+
+        if self.ratio == 1:
+            residual = hidden_states
+        # residual = self.reduce(hidden_states)
+
+        hidden_states = self.input_layernorm(hidden_states)
+        compressed_hidden_states = hidden_states
+        compressed_hidden_states = self.reduce(hidden_states)
+        # Self Attention
+        hidden_states, _ = self.self_attn(compressed_hidden_states, hidden_states, hidden_states)
+        # hidden_states, self_attn_weights, present_key_value = self.self_attn(
+        #     hidden_states=hidden_states,
+        #     attention_mask=attention_mask,
+        #     position_ids=position_ids,
+        #     past_key_value=past_key_value,
+        #     output_attentions=output_attentions,
+        #     use_cache=use_cache,
+        # )
+        if self.ratio == 1:
+            hidden_states = residual + hidden_states
+
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+
+        # outputs = (hidden_states,)
+
+        # if output_attentions:
+        #     outputs += (self_attn_weights,)
+
+        # if use_cache:
+        #     outputs += (present_key_value,)
+
+        return hidden_states
+
+
+class CompressAttnBlock(CompressState):
+    def __init__(self, input_size, hidden_size, intermediate_size, num_heads, ratio, num_blocks,
+                 positions=True, max_position_embeddings=1024,
+                 add_inputs_embeds=0, add_output_embeds=0, residual=False,
+                 reduction_mode='avg', reduction_layer='last', emb_heads=25):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        self.ratio = ratio
+        self.emb_heads = emb_heads
+
+        add_inputs_embeds = nn.Embedding(
+            add_inputs_embeds, input_size).weight if add_inputs_embeds > 0 else None
+        add_output_embeds = nn.Embedding(
+            add_output_embeds, input_size).weight if add_output_embeds > 0 else None
+        self.register_parameter('add_inputs_embeds', add_inputs_embeds)
+        self.register_parameter('add_output_embeds', add_output_embeds)
+        if residual:
+            # check ratio is an integer
+            assert ratio == int(ratio), 'ratio must be an integer for residual'
+        self.residual = residual
+        reduction_block = LlamaDecoderLayer(hidden_size=hidden_size,
+                                            intermediate_size=intermediate_size,
+                                            num_heads=num_heads, ratio=ratio,
+                                            max_position_embeddings=1024,
+                                            reduction_mode=reduction_mode)
+        if reduction_layer == 'first':
+            self.layers.append(reduction_block)
+
+        for _ in range(num_blocks - 1):
+            self.layers.append(LlamaDecoderLayer(hidden_size=hidden_size,
+                                                 intermediate_size=intermediate_size,
+                                                 num_heads=num_heads))
+        if reduction_layer == 'last':
+            self.layers.append(reduction_block)
+        if positions:
+            self.position_embedding = nn.Embedding(max_position_embeddings, hidden_size)
+        else:
+            self.position_embedding = None
+
+        if input_size == hidden_size:
+            self.input_proj = nn.Identity()
+            self.output_proj = nn.Identity()
+        else:
+            self.input_proj = nn.Sequential(
+                nn.Linear(input_size, hidden_size),
+            )
+            self.output_proj = nn.Sequential(
+                # nn.LayerNorm(hidden_size),
+                # nn.Linear(hidden_size, hidden_size),
+                # nn.GELU(),
+                nn.Linear(hidden_size, input_size)
+            )
+
+    def compress(self, state, past=None):
+        if self.add_inputs_embeds is not None:
+            state = torch.cat([state, self.add_inputs_embeds.repeat(state.shape[0], 1, 1)], dim=1)
+        if self.emb_heads > 1:
+            state = state.permute(0, 2, 1, 3).flatten(2, 3)
+        state = self.input_proj(state)
+        if self.position_embedding is not None:
+            state = state + \
+                self.position_embedding(torch.arange(
+                    state.shape[1], device=state.device).unsqueeze(0))
+        for layer in self.layers:
+            state = layer(state)
+
+        return state
+
+    def decompress(self, state, past=None):
+        state = self.output_proj(state)
+
+        if self.add_output_embeds is not None:
+            state = torch.cat(
+                [state, self.add_output_embeds.repeat(state.shape[0], 1, 1)], dim=1)
+
+        if self.emb_heads > 1:
+            state = state.reshape(state.shape[0], state.shape[1], self.emb_heads, -1)
+            state = state.permute(0, 2, 1, 3)
+        return state
+
+    def forward(self, state, past=None):
+        if self.residual:
+            residual = sample_ratio_last(state, self.ratio)
+        else:
+            residual = None
+        state = self.compress(state, past)
+        state = self.decompress(state, past)
+        if residual is not None:
+            state = state + residual
+        return state
+
+
+class CompressAttnState(CompressState):
+    def __init__(self, input_size, hidden_size, num_heads, ratio, num_blocks=4, residual=False):
+        super().__init__()
+        self.residual = residual
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.ratio = ratio
+        self.num_heads = num_heads
+        self.activation = nn.GELU()
+        # self.input_proj = nn.Sequential(
+        #     # nn.LayerNorm(input_size),
+        #     nn.Linear(input_size, hidden_size),
+        #     nn.ReLU(),
+        # )
+        # self.output_proj = nn.Sequential(
+        #     # nn.LayerNorm(hidden_size),
+        #     # nn.Linear(hidden_size, hidden_size),
+        #     # nn.GELU(),
+        #     nn.Linear(hidden_size, input_size)
+        # )
+
+        self.attn = torch.nn.MultiheadAttention(hidden_size, num_heads, batch_first=True)
+
+    def discard(self, x):
+        sz = int(x.shape[1] // self.ratio)
+        x = x.permute(0, 2, 1)
+        x = torch.nn.functional.adaptive_avg_pool1d(x, sz)
+        return x.permute(0, 2, 1)
+
+    def forward(self, state, past=None):
+        # single state is (batch, seq_length, hidden_size)
+        residual = state if self.residual else None
+        # state = self.input_proj(state)
+        state, _ = self.attn(self.discard(state), state, state)
+        # state = self.output_proj(state)
+
+        if residual is not None:
+            residual = self.discard(residual)
+            state = state + residual
+        # state = self.join_states(past, state)
         present = state
         return state, present
 
@@ -336,21 +568,16 @@ class GPT2RecurrentCompression(nn.Module):
         return self.compress_fn(self.compressors, past_key_values, compression_steps, retain_state)
 
 
-class EmbRecurrentCompression(nn.Module):
-    def __init__(self, pretrained_model, rnn_type='LSTM', state_length=128, ratio=1, residual=False,
-                 rnn_config={'num_layers': 1}, state_properties={}, wrap_pretrained=True):
+class EmbCompression(nn.Module):
+    def __init__(self, pretrained_model, compressor, wrap_pretrained=True):
         super().__init__()
-        self.state_length = state_length
-        self.ratio = ratio
         self.pretrained_model = pretrained_model
         for p in self.pretrained_model.parameters():
             p.requires_grad = False
 
-        config = dict(state_length=state_length, ratio=ratio, residual=residual,
-                      rnn_type=rnn_type, rnn_config=rnn_config, state_properties=state_properties)
         if wrap_pretrained:
             raise NotImplementedError
-        self.compressors = RecurrentEmb(**config)
+        self.compressors = compressor
 
     def forward(self, *args, **kwargs):
         return self.pretrained_model(*args, **kwargs)
@@ -360,21 +587,113 @@ class EmbRecurrentCompression(nn.Module):
     def compress_fn(compressor, state, compression_steps=1, retain_state=False):
         compressed_state = state
         for _ in range(compression_steps):
-            _, (compressed_state, _) = compressor(compressed_state)
+            _, compressed_state = compressor(compressed_state)
         return compressed_state
 
     def compress(self, state, compression_steps=1, retain_state=False):
         return self.compress_fn(self.compressors, state, compression_steps, retain_state)
 
 
-class GPT2ConvAttnCompression(nn.Module):
-    def __init__(self, pretrained_model, hidden_size=None, num_heads=None, kernel_size=3, stride=2, padding=1, residual=False,
-                 wrap_pretrained=True, **cattn_config):
+class EmbRecurrentCompression(EmbCompression):
+    def __init__(self, pretrained_model, rnn_type='LSTM', state_length=128, ratio=1, residual=False,
+                 rnn_config={'num_layers': 1}, state_properties={}, wrap_pretrained=True):
+        config = dict(state_length=state_length, ratio=ratio, residual=residual,
+                      rnn_type=rnn_type, rnn_config=rnn_config, state_properties=state_properties)
+        compressors = RecurrentEmb(**config)
+        super().__init__(pretrained_model, compressors, wrap_pretrained=wrap_pretrained)
+        self.state_length = state_length
+        self.ratio = ratio
+
+    # do not require self
+    @staticmethod
+    def compress_fn(compressor, state, compression_steps=1, retain_state=False):
+        compressed_state = state
+        for _ in range(compression_steps):
+            _, (compressed_state, _) = compressor(compressed_state)
+        return compressed_state
+
+
+class StateCompression(nn.Module):
+    def __init__(self, pretrained_model, compressors):
         super().__init__()
-        self.compressors = nn.ModuleList()
+        self.compressors = compressors
         self.pretrained_model = pretrained_model
         for p in self.pretrained_model.parameters():
             p.requires_grad = False
+
+    # do not require self
+    @staticmethod
+    def compress_fn(compressors, past_key_values, compression_steps=1, retain_state=False):
+        for _ in range(compression_steps):
+            compressed_past_key_values = []
+            for idx in range(len(past_key_values)):
+                compressor = compressors[idx]
+                c_key = compressor['key'].compress(past_key_values[idx][0])
+                c_value = compressor['value'].compress(past_key_values[idx][1])
+                compressed_past_key_values.append((c_key, c_value))
+            past_key_values = tuple(compressed_past_key_values)
+        return past_key_values
+
+    def compress(self, past_key_values, compression_steps=1, retain_state=False):
+        return self.compress_fn(self.compressors, past_key_values, compression_steps, retain_state)
+
+    # do not require self
+    @staticmethod
+    def decompress_fn(compressors, past_key_values, compression_steps=1, retain_state=False):
+        for _ in range(compression_steps):
+            compressed_past_key_values = []
+            for idx in range(len(past_key_values)):
+                compressor = compressors[idx]
+                c_key = compressor['key'].decompress(past_key_values[idx][0])
+                c_value = compressor['value'].decompress(past_key_values[idx][1])
+                compressed_past_key_values.append((c_key, c_value))
+            past_key_values = tuple(compressed_past_key_values)
+        return past_key_values
+
+    def decompress(self, past_key_values, compression_steps=1, retain_state=False):
+        return self.decompress_fn(self.compressors, past_key_values, compression_steps, retain_state)
+
+    # do not require self
+
+    @staticmethod
+    def forward_fn(compressors, past_key_values, compression_steps=1, retain_state=False):
+        for _ in range(compression_steps):
+            compressed_past_key_values = []
+            for idx in range(len(past_key_values)):
+                compressor = compressors[idx]
+                c_key = compressor['key'](past_key_values[idx][0])
+                c_value = compressor['value'](past_key_values[idx][1])
+                compressed_past_key_values.append((c_key, c_value))
+            past_key_values = tuple(compressed_past_key_values)
+        return past_key_values
+
+    def forward(self, past_key_values, compression_steps=1, retain_state=False):
+        return self.forward_fn(self.compressors, past_key_values, compression_steps, retain_state)
+
+
+class GPT2AttnBlockCompression(StateCompression):
+    def __init__(self, pretrained_model, wrap_pretrained=True, **compressor_config):
+        compressors = nn.ModuleList()
+        for module in pretrained_model.modules():
+            if isinstance(module, GPT2Attention):
+                compressor = nn.ModuleDict({
+                    'key': CompressAttnBlock(**compressor_config),
+                    'value': CompressAttnBlock(**compressor_config)
+                })
+                if wrap_pretrained:
+                    module.compress_key = compressor['key']
+                    module.compress_value = compressor['value']
+                    module.forward = types.MethodType(CompressedGPT2Attention.forward, module)
+                    # module.compress_key.modify_bias(module.bias)
+                compressors.append(compressor)
+        super().__init__(pretrained_model, compressors)
+
+
+class GPT2ConvAttnCompression(StateCompression):
+    def __init__(self, pretrained_model, hidden_size=None, num_heads=None, kernel_size=3, stride=2, padding=1, residual=False,
+                 wrap_pretrained=True, **cattn_config):
+        super().__init__()
+        compressors = nn.ModuleList()
 
         for module in self.pretrained_model.modules():
             if isinstance(module, GPT2Attention):
@@ -392,23 +711,5 @@ class GPT2ConvAttnCompression(nn.Module):
                     module.compress_value = compressors['value']
                     module.forward = types.MethodType(CompressedGPT2Attention.forward, module)
                     # module.compress_key.modify_bias(module.bias)
-                self.compressors.append(compressors)
-
-    def forward(self, *args, **kwargs):
-        return self.pretrained_model(*args, **kwargs)
-
-    # do not require self
-    @staticmethod
-    def compress_fn(compressors, past_key_values, compression_steps=1, retain_state=False):
-        for _ in range(compression_steps):
-            compressed_past_key_values = []
-            for idx in range(len(past_key_values)):
-                compressor = compressors[idx]
-                c_key, _ = compressor['key'](past_key_values[idx][0])
-                c_value, _ = compressor['value'](past_key_values[idx][1])
-                compressed_past_key_values.append((c_key, c_value))
-            past_key_values = tuple(compressed_past_key_values)
-        return past_key_values
-
-    def compress(self, past_key_values, compression_steps=1, retain_state=False):
-        return self.compress_fn(self.compressors, past_key_values, compression_steps, retain_state)
+                compressors.append(compressors)
+        super().__init__(pretrained_model, compressors, wrap_pretrained=wrap_pretrained)
