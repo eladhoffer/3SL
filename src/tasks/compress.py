@@ -127,6 +127,13 @@ class CompressStateTask(LanguageModelTask):
         return loss
 
 
+def _recursive_mse(x, y):
+    if isinstance(x, torch.Tensor):
+        return F.mse_loss(x, y, reduction='mean')
+    else:
+        return sum(_recursive_mse(xi, yi) for xi, yi in zip(x, y)) / len(x)
+
+
 class PrefixCompressStateTask(CompressStateTask):
     """
     A task for compressing state of a transformer based language model.
@@ -148,16 +155,21 @@ class PrefixCompressStateTask(CompressStateTask):
             return self._prefix_length_range[0]
         return random.randint(*self._prefix_length_range)
 
-    def loss(self, output, target):
+    def kl_div(self, output, target):
+        return F.kl_div(F.log_softmax(output.logits, dim=-1),
+                        F.log_softmax(target.logits, dim=-1),
+                        reduction='batchmean',
+                        log_target=True)
+
+    def loss(self, output, target, state=None, compressed_state=None):
         if self.objective == 'original':
             return super().loss(output, target)
         elif self.objective == 'distill_mse':
             return F.mse_loss(output.logits, target.logits)
+        elif self.objective == 'state_mse':
+            return _recursive_mse(state, compressed_state)
         elif self.objective == 'distill':
-            return F.kl_div(F.log_softmax(output.logits, dim=-1),
-                            F.log_softmax(target.logits, dim=-1),
-                            reduction='batchmean',
-                            log_target=True)
+            return self.kl_div(output, target)
 
     def prepare_batch(self, batch):
         x, y = batch
@@ -176,7 +188,7 @@ class PrefixCompressStateTask(CompressStateTask):
 
         if self.objective == 'original':
             y = y[:, prefix_length:]
-        elif self.objective == 'distill':
+        elif 'distill' in self.objective or self.objective == 'state_mse':
             with torch.no_grad():
                 y = self.forward_state(x, state, position_ids=position_ids)
         return x, y, state, position_ids
@@ -198,11 +210,14 @@ class PrefixCompressStateTask(CompressStateTask):
         x, y, state, position_ids = self.prepare_batch(batch)
         loss = 0
         for i in range(self.compression_steps):
-            state = self.compress(self.model, state)
+            cstate = self.compress(self.model, state)
             if self.use_all_steps or i == self.compression_steps - 1:
-                y_hat = self.forward_state(x, state,
-                                           position_ids=position_ids)
-                loss += self.loss(y_hat, y)
+                if self.objective == 'state_mse':
+                    y_hat = None
+                else:
+                    y_hat = self.forward_state(x, cstate,
+                                               position_ids=position_ids)
+                loss += self.loss(y_hat, y, state, cstate)
         metrics = self.metrics(output=y_hat, target=y, loss=loss)
         if self.use_sam:
             metrics['sam_loss'] = self.sam_update(x, y, loss)
@@ -225,10 +240,12 @@ class PrefixCompressStateTask(CompressStateTask):
         # metrics = self.metrics(y_hat, y, loss=loss)
         # self.log_phase_dict(metrics, phase=f'{phase}(no-state)')
 
-        state = self.compress(model, state,
-                              compression_steps=self.compression_steps)
-        y_hat = self.forward_state(x, state, position_ids=position_ids)
-        loss = self.loss(y_hat, y)
+        cstate = self.compress(model, state,
+                               compression_steps=self.compression_steps)
+        y_hat = self.forward_state(x, cstate, position_ids=position_ids)
+        loss = self.loss(y_hat, y, state, cstate)
         metrics = self.metrics(y_hat, y, loss=loss)
+        if self.objective == 'state_mse':
+            metrics['kl_div'] = self.kl_div(y_hat, y)
         self.log_phase_dict(metrics, phase=phase)
         return loss

@@ -413,6 +413,141 @@ class CompressAttnBlock(CompressState):
         return state
 
 
+class SharedCompress(nn.Module):
+    def __init__(self, num_layers, num_hidden, num_heads, ratio=100):
+        super().__init__()
+        size = num_hidden * num_heads * 2 * num_layers
+        self.reduce = nn.Sequential(
+            nn.Linear(size, 2 * size // ratio),
+            nn.ReLU(inplace=True),
+            nn.Linear(2 * size // ratio, size // ratio),
+        )
+        self.inflate = nn.Sequential(
+            nn.Linear(size // ratio, 2 * size // ratio),
+            nn.ReLU(inplace=True),
+            nn.Linear(2 * size // ratio, size),
+        )
+        self.num_layers = num_layers
+        self.num_hidden = num_hidden
+        self.num_heads = num_heads
+
+    def compress(self, state, past=None):
+        num_layers = len(state)
+        all_states = []
+        for k, v in state:
+            all_states.append(k)
+            all_states.append(v)
+        all_states = torch.stack(all_states, dim=-1)
+        # all_states is batch x num_heads x seq_length x num_hidden x (2 * num_layers)
+        all_states = all_states.permute(0, 2, 1, 3, 4)
+        # batch x seq_length x num_heads x num_hidden x (2 * num_layers)
+        all_states = all_states.flatten(2, 4)
+        all_states = self.reduce(all_states)
+        return all_states
+
+    def decompress(self, state, past=None):
+        state = self.inflate(state)
+        state = state.reshape(state.shape[0], state.shape[1],
+                              self.num_heads, self.num_hidden, 2 * self.num_layers)
+        state = state.permute(0, 2, 1, 3, 4)
+        new_state = []
+        for i in range(self.num_layers):
+            new_state.append((state[:, :, :, :, i], state[:, :, :, :, i + self.num_layers]))
+        return tuple(new_state)
+
+    def forward(self, state, past=None):
+        state = self.compress(state, past)
+        state = self.decompress(state, past)
+        return state
+
+
+class SharedSeperableCompress(nn.Module):
+    def __init__(self, num_layers, num_hidden, num_heads, ratio_hidden=16, ratio_layers=12, reduce_hidden_first=True):
+        super().__init__()
+        hidden_size = num_hidden * num_heads
+        self.reduce_hidden = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_size, hidden_size // ratio_hidden)
+        )
+        self.inflate_hidden = nn.Sequential(
+            nn.Linear(hidden_size // ratio_hidden, hidden_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(inplace=True),            
+            nn.Linear(hidden_size, hidden_size)
+        )
+        self.reduce_layers = nn.Sequential(
+            nn.Linear(num_layers * 2, num_layers * 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(num_layers * 2, num_layers * 2),
+            nn.ReLU(inplace=True),            
+            nn.Linear(num_layers * 2, (num_layers * 2) // ratio_layers)
+        )
+        self.inflate_layers = nn.Sequential(
+            nn.Linear((num_layers * 2) // ratio_layers, num_layers * 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(num_layers * 2, num_layers * 2),
+            nn.ReLU(inplace=True),  
+            nn.Linear(num_layers * 2, num_layers * 2)
+        )
+        self.num_layers = num_layers
+        self.num_hidden = num_hidden
+        self.num_heads = num_heads
+        self.reduce_hidden_first = reduce_hidden_first
+
+    def compress(self, state, past=None, **kwargs):
+        num_layers = len(state)
+        all_states = []
+        for k, v in state:
+            all_states.append(k)
+            all_states.append(v)
+        all_states = torch.stack(all_states, dim=-1)
+        # all_states is batch x num_heads x seq_length x num_hidden x (2 * num_layers)
+
+        if self.reduce_hidden_first:
+            all_states = all_states.permute(0, 2, 4, 1, 3)
+            # batch x seq_length x (2 * num_layers) x num_heads x num_hidden
+            all_states = all_states.flatten(3, 4)
+            all_states = self.reduce_hidden(all_states)
+            all_states = all_states.permute(0, 1, 3, 2)
+            # batch x seq_length x reduced_hidden x (2 * num_layers)
+            all_states = self.reduce_layers(all_states)
+        else:
+            all_states = self.reduce_layers(all_states)
+            all_states = all_states.permute(0, 2, 4, 1, 3)
+            # batch x seq_length x reduced_layers x (num_heads * num_hidden)
+            all_states = all_states.flatten(3, 4)
+            all_states = self.reduce_hidden(all_states)
+        return all_states
+
+    def decompress(self, state, past=None, **kwargs):
+        if self.reduce_hidden_first:
+            state = self.inflate_layers(state)
+            state = state.permute(0, 1, 3, 2)
+            state = self.inflate_hidden(state)
+            state = state.reshape(state.shape[0], state.shape[1],
+                                  2 * self.num_layers, self.num_heads, self.num_hidden)
+            state = state.permute(0, 3, 1, 4, 2)
+        else:
+            state = self.inflate_hidden(state)
+            state = state.reshape(state.shape[0], state.shape[1],
+                                  state.shape[2], self.num_heads, self.num_hidden)
+            state = state.permute(0, 3, 1, 4, 2)
+            state = self.inflate_layers(state)
+        new_state = []
+        for i in range(self.num_layers):
+            new_state.append((state[:, :, :, :, i], state[:, :, :, :, i + self.num_layers]))
+        return tuple(new_state)
+
+    def forward(self, state, past=None, **kwargs):
+        state = self.compress(state, past)
+        state = self.decompress(state, past)
+        return state
+
+
 class CompressAttnState(CompressState):
     def __init__(self, input_size, hidden_size, num_heads, ratio, num_blocks=4, residual=False):
         super().__init__()
@@ -565,7 +700,8 @@ class GPT2RecurrentCompression(nn.Module):
         return past_key_values
 
     def compress(self, past_key_values, compression_steps=1, retain_state=False):
-        return self.compress_fn(self.compressors, past_key_values, compression_steps, retain_state)
+        return self.compress_fn(self.compressors, past_key_values=past_key_values,
+                                compression_steps=compression_steps, retain_state=retain_state)
 
 
 class EmbCompression(nn.Module):
@@ -611,6 +747,40 @@ class EmbRecurrentCompression(EmbCompression):
         for _ in range(compression_steps):
             _, (compressed_state, _) = compressor(compressed_state)
         return compressed_state
+
+
+class SharedStateCompression(nn.Module):
+    def __init__(self, pretrained_model, compressors):
+        super().__init__()
+        self.compressors = compressors
+        self.pretrained_model = pretrained_model
+        for p in self.pretrained_model.parameters():
+            p.requires_grad = False
+
+    # do not require self
+    @staticmethod
+    def compress_fn(compressors, past_key_values):
+        return compressors.compress(past_key_values)
+
+    def compress(self, past_key_values):
+        return self.compress_fn(self.compressors, past_key_values)
+
+    # do not require self
+    @staticmethod
+    def decompress_fn(compressors, past_key_values):
+        return compressors.decompress(past_key_values)
+
+    def decompress(self, past_key_values):
+        return self.decompress_fn(self.compressors, past_key_values)
+
+    # do not require self
+
+    @staticmethod
+    def forward_fn(compressors, past_key_values, compression_steps=1, retain_state=False):
+        return compressors(past_key_values)
+
+    def forward(self, past_key_values, compression_steps=1, retain_state=False):
+        return self.forward_fn(self.compressors, past_key_values, compression_steps, retain_state)
 
 
 class StateCompression(nn.Module):
